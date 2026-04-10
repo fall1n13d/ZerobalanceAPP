@@ -139,10 +139,10 @@ export default function BudgetPage() {
     if (!confirmed) return
 
     const snapshot = {
-      paychecks: thisMonthPaychecks,
-      extraIncome: thisMonthExtra,
-      expenses: thisMonthExpenses,
-      bills: bills,
+      paychecks: thisMonthPaychecks.map(p => ({ user_id: p.user_id, earner_id: p.earner_id, amount: p.amount, date: p.date })),
+      extraIncome: thisMonthExtra.map(e => ({ user_id: e.user_id, description: e.description, amount: e.amount, category: e.category, date: e.date })),
+      expenses: thisMonthExpenses.map(e => ({ user_id: e.user_id, description: e.description, amount: e.amount, category: e.category, date: e.date, note: e.note })),
+      bills: bills.map(b => ({ user_id: b.user_id, name: b.name, amount: b.amount, category: b.category })),
     }
 
     await supabase.from('records').insert({
@@ -150,7 +150,8 @@ export default function BudgetPage() {
       month: monthLabel,
       total_debt: 0,
       total_paid: totalIncome,
-      notes: JSON.stringify(snapshot),
+      notes: `Income: $${totalIncome.toFixed(2)} · Bills: $${totalBills.toFixed(2)} · Expenses: $${totalExpenses.toFixed(2)} · Leftover: $${leftover.toFixed(2)}`,
+      snapshot,
     })
 
     const clearConfirmed = window.confirm(`${monthLabel} archived! Do you want to clear this month's paychecks, extra income, and expenses from the budget?`)
