@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { createClient } from '@/utils/supabase/client'
 import { useRouter } from 'next/navigation'
+import Link from 'next/link'
 
 export default function ResetPassword() {
   const supabase = createClient()
@@ -10,43 +11,66 @@ export default function ResetPassword() {
   const [password, setPassword] = useState('')
   const [message, setMessage] = useState('')
   const [error, setError] = useState('')
+  const [loading, setLoading] = useState(false)
 
   async function handleUpdate(e: any) {
     e.preventDefault()
+    setLoading(true)
+    setError('')
 
-    const { error } = await supabase.auth.updateUser({
-      password,
-    })
+    const { error } = await supabase.auth.updateUser({ password })
 
     if (error) {
       setError(error.message)
+      setLoading(false)
       return
     }
 
-    setMessage('Password updated! Redirecting to login...')
-    setTimeout(() => router.push('/login'), 2000)
+    setMessage('Password updated! Redirecting...')
+    setTimeout(() => router.push('/dashboard'), 2000)
   }
 
   return (
-    <main className="flex min-h-screen items-center justify-center">
-      <form onSubmit={handleUpdate} className="space-y-4 border p-6 rounded">
-        <h1>Set New Password</h1>
+    <main style={{minHeight:'100vh',display:'flex',alignItems:'center',justifyContent:'center',padding:'24px'}}>
+      <div style={{width:'100%',maxWidth:'420px'}}>
+        <div style={{textAlign:'center',marginBottom:'32px'}}>
+          <div style={{fontFamily:'Syne,sans-serif',fontWeight:800,fontSize:'28px',color:'var(--green)',marginBottom:'6px'}}>Zero Balance</div>
+          <div style={{fontSize:'12px',color:'var(--t3)',fontFamily:'DM Mono,monospace',textTransform:'uppercase',letterSpacing:'.08em'}}>Debt Freedom System</div>
+        </div>
 
-        <input
-          type="password"
-          placeholder="New password"
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          className="border p-2 w-full"
-        />
+        <div style={{background:'var(--card-bg)',border:'1px solid var(--b2)',borderRadius:'24px',padding:'36px',boxShadow:'var(--shadow)'}}>
+          <h1 style={{fontFamily:'Syne,sans-serif',fontWeight:700,fontSize:'22px',marginBottom:'8px'}}>Set New Password</h1>
+          <p style={{fontSize:'13px',color:'var(--t3)',marginBottom:'24px'}}>Enter your new password below.</p>
 
-        {error && <p className="text-red-500">{error}</p>}
-        {message && <p className="text-green-500">{message}</p>}
+          <form onSubmit={handleUpdate} style={{display:'flex',flexDirection:'column',gap:'16px'}}>
+            <div>
+              <div style={{fontSize:'10px',color:'var(--t3)',fontFamily:'DM Mono,monospace',textTransform:'uppercase',letterSpacing:'.06em',marginBottom:'6px'}}>New Password</div>
+              <input
+                className="fi"
+                type="password"
+                placeholder="Min 6 characters"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                required
+                minLength={6}
+              />
+            </div>
 
-        <button type="submit" className="border px-4 py-2">
-          Update Password
-        </button>
-      </form>
+            {error && <p style={{fontSize:'12px',color:'var(--red)',fontFamily:'DM Mono,monospace'}}>{error}</p>}
+            {message && <p style={{fontSize:'12px',color:'var(--green)',fontFamily:'DM Mono,monospace'}}>{message}</p>}
+
+            <button type="submit" className="btn-add" style={{width:'100%',padding:'13px'}} disabled={loading}>
+              {loading ? 'Updating...' : 'Update Password'}
+            </button>
+          </form>
+
+          <div style={{marginTop:'20px',textAlign:'center'}}>
+            <Link href="/login" style={{fontSize:'12px',color:'var(--t3)',fontFamily:'DM Mono,monospace',textDecoration:'none'}}>
+              Back to <span style={{color:'var(--green)'}}>Sign in</span>
+            </Link>
+          </div>
+        </div>
+      </div>
     </main>
   )
 }
