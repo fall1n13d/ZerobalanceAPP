@@ -5,6 +5,26 @@ import { createClient } from '@/utils/supabase/client'
 import { useRouter } from 'next/navigation'
 import Sidebar from '@/components/Sidebar'
 
+function DateInput({ value, onChange }: { value: string, onChange: (v: string) => void }) {
+  function handleChange(e: React.ChangeEvent<HTMLInputElement>) {
+    let v = e.target.value.replace(/\D/g, '')
+    if (v.length > 8) v = v.slice(0, 8)
+    if (v.length >= 5) v = v.slice(0, 2) + '/' + v.slice(2, 4) + '/' + v.slice(4)
+    else if (v.length >= 3) v = v.slice(0, 2) + '/' + v.slice(2)
+    onChange(v)
+  }
+  return (
+    <input
+      className="fi"
+      type="text"
+      placeholder="MM/DD/YYYY"
+      value={value}
+      onChange={handleChange}
+      maxLength={10}
+    />
+  )
+}
+
 export default function DebtsPage() {
   const supabase = createClient()
   const router = useRouter()
@@ -130,7 +150,7 @@ export default function DebtsPage() {
               </div>
               <div>
                 <div style={{fontSize:'10px',color:'var(--t3)',fontFamily:'DM Mono,monospace',textTransform:'uppercase',letterSpacing:'.06em',marginBottom:'4px'}}>Due Date</div>
-                <input className="fi" type="text" placeholder="MM/DD/YYYY" value={dueDate} onChange={(e) => setDueDate(e.target.value)} />
+                <DateInput value={dueDate} onChange={setDueDate} />
               </div>
               <button type="submit" className="btn-add">Add</button>
             </form>
