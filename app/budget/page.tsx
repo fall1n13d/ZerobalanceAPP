@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react'
 import { createClient } from '@/utils/supabase/client'
 import { useRouter } from 'next/navigation'
+import Link from 'next/link'
 
 export default function BudgetPage() {
   const supabase = createClient()
@@ -15,9 +16,7 @@ export default function BudgetPage() {
   const [billAmount, setBillAmount] = useState('')
   const [loading, setLoading] = useState(true)
 
-  useEffect(() => {
-    loadData()
-  }, [])
+  useEffect(() => { loadData() }, [])
 
   async function loadData() {
     const { data: incomeData } = await supabase.from('income').select('*').order('created_at', { ascending: true })
@@ -32,8 +31,7 @@ export default function BudgetPage() {
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return router.push('/login')
     await supabase.from('income').insert({ user_id: user.id, name: incomeName, amount: parseFloat(incomeAmount) })
-    setIncomeName('')
-    setIncomeAmount('')
+    setIncomeName(''); setIncomeAmount('')
     loadData()
   }
 
@@ -42,8 +40,7 @@ export default function BudgetPage() {
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return router.push('/login')
     await supabase.from('bills').insert({ user_id: user.id, name: billName, amount: parseFloat(billAmount) })
-    setBillName('')
-    setBillAmount('')
+    setBillName(''); setBillAmount('')
     loadData()
   }
 
@@ -62,54 +59,89 @@ export default function BudgetPage() {
   const leftover = totalIncome - totalBills
 
   return (
-    <main className="min-h-screen p-6 max-w-2xl mx-auto">
-      <div className="flex justify-between items-center mb-6">
-        <h1 className="text-2xl font-bold">Budget</h1>
-        <a href="/dashboard" className="text-sm underline">Dashboard</a>
-      </div>
-      {loading ? <p>Loading...</p> : (
-        <div className="space-y-6">
-          <div className="border rounded p-4 space-y-3">
-            <h2 className="font-semibold">Income</h2>
-            <form onSubmit={addIncome} className="flex gap-2">
-              <input type="text" placeholder="Name" value={incomeName} onChange={(e) => setIncomeName(e.target.value)} required className="border p-2 rounded flex-1" />
-              <input type="number" placeholder="Amount" value={incomeAmount} onChange={(e) => setIncomeAmount(e.target.value)} required className="border p-2 rounded w-32" />
-              <button type="submit" className="border px-3 py-2 rounded font-semibold">Add</button>
-            </form>
-            {income.map((i) => (
-              <div key={i.id} className="flex justify-between items-center">
-                <span>{i.name}</span>
-                <div className="flex gap-3 items-center">
-                  <span>${Number(i.amount).toFixed(2)}</span>
-                  <button onClick={() => deleteIncome(i.id)} className="text-red-500 text-sm underline">Delete</button>
-                </div>
-              </div>
-            ))}
-            <p className="font-semibold">Total Income: ${totalIncome.toFixed(2)}</p>
+    <div className="shell">
+      <aside className="sidebar">
+        <div className="logo">
+          <div className="logo-name">Zero Balance</div>
+          <div className="logo-sub">Debt Freedom System</div>
+        </div>
+        <nav className="nav-links">
+          <Link href="/debts" className="nav-item">💳 My Debts</Link>
+          <Link href="/budget" className="nav-item active">💰 Budget</Link>
+          <Link href="/records" className="nav-item">📋 Records</Link>
+          <Link href="/snowball" className="nav-item">❄️ Snowball</Link>
+        </nav>
+        <div className="nav-logout">
+          <Link href="/login" className="btn-logout" style={{display:'block',textAlign:'center',textDecoration:'none'}}>Sign Out</Link>
+        </div>
+      </aside>
+      <main className="main">
+        <div className="page-header">
+          <div className="page-title">Budget</div>
+          <div style={{fontSize:'13px',color:'var(--t3)',marginTop:'8px'}}>Track your income and bills</div>
+        </div>
+
+        <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:'14px',marginBottom:'16px'}}>
+          <div className="metric-card">
+            <div className="metric-label">Total Income</div>
+            <div className="metric-value green">${totalIncome.toFixed(2)}</div>
           </div>
-          <div className="border rounded p-4 space-y-3">
-            <h2 className="font-semibold">Bills</h2>
-            <form onSubmit={addBill} className="flex gap-2">
-              <input type="text" placeholder="Name" value={billName} onChange={(e) => setBillName(e.target.value)} required className="border p-2 rounded flex-1" />
-              <input type="number" placeholder="Amount" value={billAmount} onChange={(e) => setBillAmount(e.target.value)} required className="border p-2 rounded w-32" />
-              <button type="submit" className="border px-3 py-2 rounded font-semibold">Add</button>
-            </form>
-            {bills.map((b) => (
-              <div key={b.id} className="flex justify-between items-center">
-                <span>{b.name}</span>
-                <div className="flex gap-3 items-center">
-                  <span>${Number(b.amount).toFixed(2)}</span>
-                  <button onClick={() => deleteBill(b.id)} className="text-red-500 text-sm underline">Delete</button>
-                </div>
-              </div>
-            ))}
-            <p className="font-semibold">Total Bills: ${totalBills.toFixed(2)}</p>
+          <div className="metric-card">
+            <div className="metric-label">Total Bills</div>
+            <div className="metric-value amber">${totalBills.toFixed(2)}</div>
           </div>
-          <div className="border rounded p-4">
-            <p className="font-semibold">Leftover: ${leftover.toFixed(2)}</p>
+          <div className="metric-card">
+            <div className="metric-label">Leftover</div>
+            <div className="metric-value" style={{color: leftover >= 0 ? 'var(--blue)' : 'var(--red)'}}>${leftover.toFixed(2)}</div>
           </div>
         </div>
-      )}
-    </main>
+
+        <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'16px'}}>
+          <div className="card">
+            <div className="card-head">
+              <span className="card-title">Income</span>
+            </div>
+            <div className="card-body">
+              <form onSubmit={addIncome} style={{display:'flex',gap:'8px',marginBottom:'16px'}}>
+                <input className="fi" type="text" placeholder="Name" value={incomeName} onChange={(e) => setIncomeName(e.target.value)} required />
+                <input className="fi" type="number" placeholder="Amount" value={incomeAmount} onChange={(e) => setIncomeAmount(e.target.value)} required style={{width:'120px'}} />
+                <button type="submit" className="btn-add">Add</button>
+              </form>
+              {loading ? <p style={{color:'var(--t3)'}}>Loading...</p> : income.map((i) => (
+                <div key={i.id} className="row-item">
+                  <span>{i.name}</span>
+                  <div style={{display:'flex',gap:'12px',alignItems:'center'}}>
+                    <span className="mono green">${Number(i.amount).toFixed(2)}</span>
+                    <button onClick={() => deleteIncome(i.id)} className="btn-del">✕</button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div className="card">
+            <div className="card-head">
+              <span className="card-title">Bills</span>
+            </div>
+            <div className="card-body">
+              <form onSubmit={addBill} style={{display:'flex',gap:'8px',marginBottom:'16px'}}>
+                <input className="fi" type="text" placeholder="Name" value={billName} onChange={(e) => setBillName(e.target.value)} required />
+                <input className="fi" type="number" placeholder="Amount" value={billAmount} onChange={(e) => setBillAmount(e.target.value)} required style={{width:'120px'}} />
+                <button type="submit" className="btn-add">Add</button>
+              </form>
+              {loading ? <p style={{color:'var(--t3)'}}>Loading...</p> : bills.map((b) => (
+                <div key={b.id} className="row-item">
+                  <span>{b.name}</span>
+                  <div style={{display:'flex',gap:'12px',alignItems:'center'}}>
+                    <span className="mono amber">${Number(b.amount).toFixed(2)}</span>
+                    <button onClick={() => deleteBill(b.id)} className="btn-del">✕</button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      </main>
+    </div>
   )
 }
