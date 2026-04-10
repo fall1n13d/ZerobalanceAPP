@@ -154,13 +154,17 @@ export default function BudgetPage() {
       snapshot,
     })
 
-    const clearConfirmed = window.confirm(`${monthLabel} archived! Do you want to clear this month's paychecks, extra income, and expenses from the budget?`)
+    const clearConfirmed = window.confirm(`${monthLabel} archived! Do you want to clear ALL budget data including paychecks, extra income, expenses and bills?`)
     if (clearConfirmed) {
-      await Promise.all([
-        ...thisMonthPaychecks.map(p => supabase.from('paychecks').delete().eq('id', p.id)),
-        ...thisMonthExtra.map(e => supabase.from('extra_income').delete().eq('id', e.id)),
-        ...thisMonthExpenses.map(e => supabase.from('expenses').delete().eq('id', e.id)),
-      ])
+      const { data: { user: u } } = await supabase.auth.getUser()
+      if (u) {
+        await Promise.all([
+          supabase.from('paychecks').delete().eq('user_id', u.id),
+          supabase.from('extra_income').delete().eq('user_id', u.id),
+          supabase.from('expenses').delete().eq('user_id', u.id),
+          supabase.from('bills').delete().eq('user_id', u.id),
+        ])
+      }
       loadData()
     }
 
