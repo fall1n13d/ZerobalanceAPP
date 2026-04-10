@@ -7,7 +7,6 @@ import { useRouter } from 'next/navigation'
 export default function DebtsPage() {
   const supabase = createClient()
   const router = useRouter()
-
   const [debts, setDebts] = useState<any[]>([])
   const [name, setName] = useState('')
   const [balance, setBalance] = useState('')
@@ -24,7 +23,6 @@ export default function DebtsPage() {
       .from('debts')
       .select('*')
       .order('created_at', { ascending: true })
-
     if (error) console.error(error)
     else setDebts(data || [])
     setLoading(false)
@@ -32,10 +30,8 @@ export default function DebtsPage() {
 
   async function addDebt(e: any) {
     e.preventDefault()
-
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return router.push('/login')
-
     const { error } = await supabase.from('debts').insert({
       user_id: user.id,
       name,
@@ -43,12 +39,7 @@ export default function DebtsPage() {
       min_payment: parseFloat(minPayment),
       apr: parseFloat(apr),
     })
-
-    if (error) {
-      console.error(error)
-      return
-    }
-
+    if (error) { console.error(error); return }
     setName('')
     setBalance('')
     setMinPayment('')
@@ -70,50 +61,18 @@ export default function DebtsPage() {
         <h1 className="text-2xl font-bold">My Debts</h1>
         <a href="/dashboard" className="text-sm underline">Dashboard</a>
       </div>
-
       <form onSubmit={addDebt} className="border rounded p-4 space-y-3 mb-6">
         <h2 className="font-semibold">Add Debt</h2>
-        <input
-          type="text"
-          placeholder="Debt name"
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          required
-          className="border p-2 w-full rounded"
-        />
-        <input
-          type="number"
-          placeholder="Balance"
-          value={balance}
-          onChange={(e) => setBalance(e.target.value)}
-          required
-          className="border p-2 w-full rounded"
-        />
-        <input
-          type="number"
-          placeholder="Min payment"
-          value={minPayment}
-          onChange={(e) => setMinPayment(e.target.value)}
-          required
-          className="border p-2 w-full rounded"
-        />
-        <input
-          type="number"
-          placeholder="APR %"
-          value={apr}
-          onChange={(e) => setApr(e.target.value)}
-          required
-          className="border p-2 w-full rounded"
-        />
-        <button type="submit" className="border px-4 py-2 rounded w-full font-semibold">
-          Add Debt
-        </button>
+        <input type="text" placeholder="Debt name" value={name} onChange={(e) => setName(e.target.value)} required className="border p-2 w-full rounded" />
+        <input type="number" placeholder="Balance" value={balance} onChange={(e) => setBalance(e.target.value)} required className="border p-2 w-full rounded" />
+        <input type="number" placeholder="Min payment" value={minPayment} onChange={(e) => setMinPayment(e.target.value)} required className="border p-2 w-full rounded" />
+        <input type="number" placeholder="APR %" value={apr} onChange={(e) => setApr(e.target.value)} required className="border p-2 w-full rounded" />
+        <button type="submit" className="border px-4 py-2 rounded w-full font-semibold">Add Debt</button>
       </form>
-
       {loading ? (
         <p>Loading...</p>
       ) : debts.length === 0 ? (
-        <p className="text-gray-500">No debts added yet.</p>
+        <p>No debts added yet.</p>
       ) : (
         <div className="space-y-3">
           {debts.map((debt) => (
@@ -124,6 +83,15 @@ export default function DebtsPage() {
                 <p className="text-sm">Min Payment: ${Number(debt.min_payment).toFixed(2)}</p>
                 <p className="text-sm">APR: {debt.apr}%</p>
               </div>
-              <button
-                onClick={() => deleteDebt(debt.id)}
-                classNam
+              <button onClick={() => deleteDebt(debt.id)} className="text-red-500 text-sm underline">Delete</button>
+            </div>
+          ))}
+          <div className="border rounded p-4">
+            <p className="font-semibold">Total Balance: ${totalBalance.toFixed(2)}</p>
+            <p className="font-semibold">Total Min Payment: ${totalMinPayment.toFixed(2)}</p>
+          </div>
+        </div>
+      )}
+    </main>
+  )
+}
