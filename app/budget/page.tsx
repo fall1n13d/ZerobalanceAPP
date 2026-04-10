@@ -5,58 +5,144 @@ import { createClient } from '@/utils/supabase/client'
 import { useRouter } from 'next/navigation'
 import Sidebar from '@/components/Sidebar'
 
+function DateInput({ value, onChange }: { value: string, onChange: (v: string) => void }) {
+  function handleChange(e: React.ChangeEvent<HTMLInputElement>) {
+    let v = e.target.value.replace(/\D/g, '')
+    if (v.length > 8) v = v.slice(0, 8)
+    if (v.length >= 5) v = v.slice(0, 2) + '/' + v.slice(2, 4) + '/' + v.slice(4)
+    else if (v.length >= 3) v = v.slice(0, 2) + '/' + v.slice(2)
+    onChange(v)
+  }
+  return <input className="fi" type="text" placeholder="MM/DD/YYYY" value={value} onChange={handleChange} maxLength={10} />
+}
+
+const CAT_LABELS: Record<string, string> = {
+  housing:'🏠 Housing', utilities:'💡 Utilities', food:'🛒 Food',
+  transport:'🚗 Transport', insurance:'🛡 Insurance', subscriptions:'📱 Subscriptions',
+  health:'❤️ Health', other:'📦 Other'
+}
+
+const FREQ_LABELS: Record<string, string> = {
+  weekly:'Weekly', biweekly:'Bi-weekly', twicemonthly:'Twice/month', monthly:'Monthly'
+}
+
 export default function BudgetPage() {
   const supabase = createClient()
   const router = useRouter()
-  const [income, setIncome] = useState<any[]>([])
+
+  const [earners, setEarners] = useState<any[]>([])
+  const [paychecks, setPaychecks] = useState<any[]>([])
   const [bills, setBills] = useState<any[]>([])
-  const [incomeName, setIncomeName] = useState('')
-  const [incomeAmount, setIncomeAmount] = useState('')
+  const [extraIncome, setExtraIncome] = useState<any[]>([])
+  const [expenses, setExpenses] = useState<any[]>([])
+  const [loading, setLoading] = useState(true)
+  const [activeTab, setActiveTab] = useState('income')
+
+  const [earnerName, setEarnerName] = useState('')
+  const [earnerFreq, setEarnerFreq] = useState('monthly')
+  const [pcEarnerId, setPcEarnerId] = useState('')
+  const [pcAmount, setPcAmount] = useState('')
+  const [pcDate, setPcDate] = useState('')
   const [billName, setBillName] = useState('')
   const [billAmount, setBillAmount] = useState('')
-  const [loading, setLoading] = useState(true)
+  const [billCat, setBillCat] = useState('other')
+  const [eiDesc, setEiDesc] = useState('')
+  const [eiAmount, setEiAmount] = useState('')
+  const [eiCat, setEiCat] = useState('other')
+  const [eiDate, setEiDate] = useState('')
+  const [exDesc, setExDesc] = useState('')
+  const [exAmount, setExAmount] = useState('')
+  const [exCat, setExCat] = useState('other')
+  const [exDate, setExDate] = useState('')
+  const [exNote, setExNote] = useState('')
 
   useEffect(() => { loadData() }, [])
 
   async function loadData() {
-    const { data: incomeData } = await supabase.from('income').select('*').order('created_at', { ascending: true })
-    const { data: billsData } = await supabase.from('bills').select('*').order('created_at', { ascending: true })
-    setIncome(incomeData || [])
-    setBills(billsData || [])
+    const [e, p, b, ei, ex] = await Promise.all([
+      supabase.from('earners').select('*').order('created_at'),
+      supabase.from('paychecks').select('*').order('date', { ascending: false }),
+      supabase.from('bills').select('*').order('created_at'),
+      supabase.from('extra_income').select('*').order('date', { ascending: false }),
+      supabase.from('expenses').select('*').order('date', { ascending: false }),
+    ])
+    setEarners(e.data || [])
+    setPaychecks(p.data || [])
+    setBills(b.data || [])
+    setExtraIncome(ei.data || [])
+    setExpenses(ex.data || [])
     setLoading(false)
   }
 
-  async function addIncome(e: any) {
-    e.preventDefault()
+  async function getUser() {
     const { data: { user } } = await supabase.auth.getUser()
-    if (!user) return router.push('/login')
-    await supabase.from('income').insert({ user_id: user.id, name: incomeName, amount: parseFloat(incomeAmount) })
-    setIncomeName(''); setIncomeAmount('')
-    loadData()
+    if (!user) { router.push('/login'); return null }
+    return user
+  }
+
+  async function addEarner(e: any) {
+    e.preventDefault()
+    const user = await getUser(); if (!user) return
+    await supabase.from('earners').insert({ user_id: user.id, name: earnerName, freq: earnerFreq })
+    setEarnerName(''); loadData()
+  }
+
+  async function addPaycheck(e: any) {
+    e.preventDefault()
+    const user = await getUser(); if (!user) return
+    await supabase.from('paychecks').insert({ user_id: user.id, earner_id: parseInt(pcEarnerId), amount: parseFloat(pcAmount), date: pcDate })
+    setPcAmount(''); setPcDate(''); loadData()
   }
 
   async function addBill(e: any) {
     e.preventDefault()
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) return router.push('/login')
-    await supabase.from('bills').insert({ user_id: user.id, name: billName, amount: parseFloat(billAmount) })
-    setBillName(''); setBillAmount('')
-    loadData()
+    const user = await getUser(); if (!user) return
+    await supabase.from('bills').insert({ user_id: user.id, name: billName, amount: parseFloat(billAmount), category: billCat })
+    setBillName(''); setBillAmount(''); loadData()
   }
 
-  async function deleteIncome(id: number) {
-    await supabase.from('income').delete().eq('id', id)
-    loadData()
+  async function addExtraIncome(e: any) {
+    e.preventDefault()
+    const user = await getUser(); if (!user) return
+    await supabase.from('extra_income').insert({ user_id: user.id, description: eiDesc, amount: parseFloat(eiAmount), category: eiCat, date: eiDate })
+    setEiDesc(''); setEiAmount(''); setEiDate(''); loadData()
   }
 
-  async function deleteBill(id: number) {
-    await supabase.from('bills').delete().eq('id', id)
-    loadData()
+  async function addExpense(e: any) {
+    e.preventDefault()
+    const user = await getUser(); if (!user) return
+    await supabase.from('expenses').insert({ user_id: user.id, description: exDesc, amount: parseFloat(exAmount), category: exCat, date: exDate, note: exNote })
+    setExDesc(''); setExAmount(''); setExDate(''); setExNote(''); loadData()
   }
 
-  const totalIncome = income.reduce((sum, i) => sum + Number(i.amount), 0)
-  const totalBills = bills.reduce((sum, b) => sum + Number(b.amount), 0)
-  const leftover = totalIncome - totalBills
+  const now = new Date()
+  const thisMonth = (items: any[]) => items.filter(i => {
+    const parts = i.date?.split('/')
+    if (!parts || parts.length !== 3) return false
+    return parseInt(parts[2]) === now.getFullYear() && parseInt(parts[0]) - 1 === now.getMonth()
+  })
+
+  const thisMonthPaychecks = thisMonth(paychecks)
+  const thisMonthExtra = thisMonth(extraIncome)
+  const thisMonthExpenses = thisMonth(expenses)
+  const totalIncome = thisMonthPaychecks.reduce((s, p) => s + Number(p.amount), 0) + thisMonthExtra.reduce((s, e) => s + Number(e.amount), 0)
+  const totalBills = bills.reduce((s, b) => s + Number(b.amount), 0)
+  const totalExpenses = thisMonthExpenses.reduce((s, e) => s + Number(e.amount), 0)
+  const leftover = totalIncome - totalBills - totalExpenses
+
+  const tabStyle = (tab: string) => ({
+    padding: '8px 16px',
+    borderRadius: '10px',
+    border: '1px solid transparent',
+    background: activeTab === tab ? 'var(--gdim)' : 'var(--s2)',
+    color: activeTab === tab ? 'var(--green)' : 'var(--t2)',
+    borderColor: activeTab === tab ? 'var(--gmid)' : 'transparent',
+    cursor: 'pointer',
+    fontFamily: 'DM Mono,monospace',
+    fontSize: '12px',
+    fontWeight: 500,
+    transition: 'all .15s',
+  })
 
   return (
     <div className="shell">
@@ -64,17 +150,21 @@ export default function BudgetPage() {
       <main className="main">
         <div className="page-header">
           <div className="page-title">Budget</div>
-          <div style={{fontSize:'13px',color:'var(--t3)',marginTop:'8px'}}>Track your income and bills</div>
+          <div style={{fontSize:'13px',color:'var(--t3)',marginTop:'8px'}}>Track your income, bills and expenses</div>
         </div>
 
-        <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:'14px',marginBottom:'16px'}}>
+        <div style={{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:'14px',marginBottom:'16px'}}>
           <div className="metric-card">
-            <div className="metric-label">Total Income</div>
+            <div className="metric-label">This Month Income</div>
             <div className="metric-value green">${totalIncome.toFixed(2)}</div>
           </div>
           <div className="metric-card">
-            <div className="metric-label">Total Bills</div>
+            <div className="metric-label">Monthly Bills</div>
             <div className="metric-value amber">${totalBills.toFixed(2)}</div>
+          </div>
+          <div className="metric-card">
+            <div className="metric-label">This Month Expenses</div>
+            <div className="metric-value" style={{color:'var(--purple)'}}>${totalExpenses.toFixed(2)}</div>
           </div>
           <div className="metric-card">
             <div className="metric-label">Leftover</div>
@@ -82,51 +172,170 @@ export default function BudgetPage() {
           </div>
         </div>
 
-        <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'16px'}}>
-          <div className="card">
-            <div className="card-head">
-              <span className="card-title">Income</span>
-            </div>
-            <div className="card-body">
-              <form onSubmit={addIncome} style={{display:'flex',gap:'8px',marginBottom:'16px'}}>
-                <input className="fi" type="text" placeholder="Name" value={incomeName} onChange={(e) => setIncomeName(e.target.value)} required />
-                <input className="fi" type="number" placeholder="Amount" value={incomeAmount} onChange={(e) => setIncomeAmount(e.target.value)} required style={{width:'120px'}} />
-                <button type="submit" className="btn-add">Add</button>
-              </form>
-              {loading ? <p style={{color:'var(--t3)'}}>Loading...</p> : income.map((i) => (
-                <div key={i.id} className="row-item">
-                  <span>{i.name}</span>
-                  <div style={{display:'flex',gap:'12px',alignItems:'center'}}>
-                    <span className="mono green">${Number(i.amount).toFixed(2)}</span>
-                    <button onClick={() => deleteIncome(i.id)} className="btn-del">✕</button>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          <div className="card">
-            <div className="card-head">
-              <span className="card-title">Bills</span>
-            </div>
-            <div className="card-body">
-              <form onSubmit={addBill} style={{display:'flex',gap:'8px',marginBottom:'16px'}}>
-                <input className="fi" type="text" placeholder="Name" value={billName} onChange={(e) => setBillName(e.target.value)} required />
-                <input className="fi" type="number" placeholder="Amount" value={billAmount} onChange={(e) => setBillAmount(e.target.value)} required style={{width:'120px'}} />
-                <button type="submit" className="btn-add">Add</button>
-              </form>
-              {loading ? <p style={{color:'var(--t3)'}}>Loading...</p> : bills.map((b) => (
-                <div key={b.id} className="row-item">
-                  <span>{b.name}</span>
-                  <div style={{display:'flex',gap:'12px',alignItems:'center'}}>
-                    <span className="mono amber">${Number(b.amount).toFixed(2)}</span>
-                    <button onClick={() => deleteBill(b.id)} className="btn-del">✕</button>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
+        <div style={{display:'flex',gap:'8px',marginBottom:'16px',flexWrap:'wrap'}}>
+          {['income','bills','extra','expenses'].map(tab => (
+            <button key={tab} style={tabStyle(tab)} onClick={() => setActiveTab(tab)}>
+              {tab === 'income' ? '💰 Paychecks' : tab === 'bills' ? '📋 Bills' : tab === 'extra' ? '➕ Extra Income' : '🧾 Expenses'}
+            </button>
+          ))}
         </div>
+
+        {loading ? <p style={{color:'var(--t3)'}}>Loading...</p> : (
+          <>
+            {activeTab === 'income' && (
+              <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'16px'}}>
+                <div className="card">
+                  <div className="card-head"><span className="card-title">Earners</span></div>
+                  <div className="card-body">
+                    <form onSubmit={addEarner} style={{display:'flex',gap:'8px',marginBottom:'16px'}}>
+                      <input className="fi" type="text" placeholder="Name" value={earnerName} onChange={e => setEarnerName(e.target.value)} required />
+                      <select className="fi" value={earnerFreq} onChange={e => setEarnerFreq(e.target.value)} style={{width:'140px'}}>
+                        {Object.entries(FREQ_LABELS).map(([k,v]) => <option key={k} value={k}>{v}</option>)}
+                      </select>
+                      <button type="submit" className="btn-add">Add</button>
+                    </form>
+                    {earners.map(e => (
+                      <div key={e.id} className="row-item">
+                        <div>
+                          <div>{e.name}</div>
+                          <div style={{fontSize:'11px',color:'var(--t3)',fontFamily:'DM Mono,monospace'}}>{FREQ_LABELS[e.freq]}</div>
+                        </div>
+                        <button onClick={async () => { await supabase.from('earners').delete().eq('id', e.id); loadData() }} className="btn-del">✕</button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="card">
+                  <div className="card-head"><span className="card-title">Log Paycheck</span></div>
+                  <div className="card-body">
+                    <form onSubmit={addPaycheck} style={{display:'flex',flexDirection:'column',gap:'10px',marginBottom:'16px'}}>
+                      <select className="fi" value={pcEarnerId} onChange={e => setPcEarnerId(e.target.value)} required>
+                        <option value="">Select earner</option>
+                        {earners.map(e => <option key={e.id} value={e.id}>{e.name}</option>)}
+                      </select>
+                      <div style={{display:'flex',gap:'8px'}}>
+                        <input className="fi" type="number" placeholder="Amount" value={pcAmount} onChange={e => setPcAmount(e.target.value)} required />
+                        <DateInput value={pcDate} onChange={setPcDate} />
+                      </div>
+                      <button type="submit" className="btn-add">Log Paycheck</button>
+                    </form>
+                    {thisMonthPaychecks.map(p => {
+                      const earner = earners.find(e => e.id === p.earner_id)
+                      return (
+                        <div key={p.id} className="row-item">
+                          <div>
+                            <div style={{fontSize:'12px',color:'var(--t2)'}}>{earner?.name || 'Unknown'}</div>
+                            <div style={{fontSize:'11px',color:'var(--t3)',fontFamily:'DM Mono,monospace'}}>{p.date}</div>
+                          </div>
+                          <div style={{display:'flex',gap:'8px',alignItems:'center'}}>
+                            <span className="mono green">${Number(p.amount).toFixed(2)}</span>
+                            <button onClick={async () => { await supabase.from('paychecks').delete().eq('id', p.id); loadData() }} className="btn-del">✕</button>
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {activeTab === 'bills' && (
+              <div className="card">
+                <div className="card-head"><span className="card-title">Monthly Bills</span></div>
+                <div className="card-body">
+                  <form onSubmit={addBill} style={{display:'flex',gap:'8px',marginBottom:'16px'}}>
+                    <input className="fi" type="text" placeholder="Bill name" value={billName} onChange={e => setBillName(e.target.value)} required />
+                    <input className="fi" type="number" placeholder="Amount" value={billAmount} onChange={e => setBillAmount(e.target.value)} required style={{width:'120px'}} />
+                    <select className="fi" value={billCat} onChange={e => setBillCat(e.target.value)} style={{width:'160px'}}>
+                      {Object.entries(CAT_LABELS).map(([k,v]) => <option key={k} value={k}>{v}</option>)}
+                    </select>
+                    <button type="submit" className="btn-add">Add</button>
+                  </form>
+                  {bills.map(b => (
+                    <div key={b.id} className="row-item">
+                      <div>
+                        <div>{b.name}</div>
+                        <div style={{fontSize:'11px',color:'var(--t3)'}}>{CAT_LABELS[b.category]}</div>
+                      </div>
+                      <div style={{display:'flex',gap:'8px',alignItems:'center'}}>
+                        <span className="mono amber">${Number(b.amount).toFixed(2)}</span>
+                        <button onClick={async () => { await supabase.from('bills').delete().eq('id', b.id); loadData() }} className="btn-del">✕</button>
+                      </div>
+                    </div>
+                  ))}
+                  <div style={{marginTop:'12px',paddingTop:'12px',borderTop:'1px solid var(--b)',display:'flex',justifyContent:'space-between'}}>
+                    <span style={{fontFamily:'DM Mono,monospace',fontSize:'12px',color:'var(--t3)'}}>Total</span>
+                    <span className="mono amber">${totalBills.toFixed(2)}</span>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {activeTab === 'extra' && (
+              <div className="card">
+                <div className="card-head"><span className="card-title">Extra Income</span></div>
+                <div className="card-body">
+                  <form onSubmit={addExtraIncome} style={{display:'flex',gap:'8px',marginBottom:'16px',flexWrap:'wrap'}}>
+                    <input className="fi" type="text" placeholder="Description" value={eiDesc} onChange={e => setEiDesc(e.target.value)} required style={{flex:2,minWidth:'150px'}} />
+                    <input className="fi" type="number" placeholder="Amount" value={eiAmount} onChange={e => setEiAmount(e.target.value)} required style={{width:'120px'}} />
+                    <select className="fi" value={eiCat} onChange={e => setEiCat(e.target.value)} style={{width:'160px'}}>
+                      {Object.entries(CAT_LABELS).map(([k,v]) => <option key={k} value={k}>{v}</option>)}
+                    </select>
+                    <DateInput value={eiDate} onChange={setEiDate} />
+                    <button type="submit" className="btn-add">Add</button>
+                  </form>
+                  {extraIncome.map(e => (
+                    <div key={e.id} className="row-item">
+                      <div>
+                        <div>{e.description}</div>
+                        <div style={{fontSize:'11px',color:'var(--t3)'}}>{CAT_LABELS[e.category]} · {e.date}</div>
+                      </div>
+                      <div style={{display:'flex',gap:'8px',alignItems:'center'}}>
+                        <span className="mono green">${Number(e.amount).toFixed(2)}</span>
+                        <button onClick={async () => { await supabase.from('extra_income').delete().eq('id', e.id); loadData() }} className="btn-del">✕</button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {activeTab === 'expenses' && (
+              <div className="card">
+                <div className="card-head"><span className="card-title">Expenses</span></div>
+                <div className="card-body">
+                  <form onSubmit={addExpense} style={{display:'flex',gap:'8px',marginBottom:'16px',flexWrap:'wrap'}}>
+                    <input className="fi" type="text" placeholder="Description" value={exDesc} onChange={e => setExDesc(e.target.value)} required style={{flex:2,minWidth:'150px'}} />
+                    <input className="fi" type="number" placeholder="Amount" value={exAmount} onChange={e => setExAmount(e.target.value)} required style={{width:'120px'}} />
+                    <select className="fi" value={exCat} onChange={e => setExCat(e.target.value)} style={{width:'160px'}}>
+                      {Object.entries(CAT_LABELS).map(([k,v]) => <option key={k} value={k}>{v}</option>)}
+                    </select>
+                    <DateInput value={exDate} onChange={setExDate} />
+                    <input className="fi" type="text" placeholder="Note (optional)" value={exNote} onChange={e => setExNote(e.target.value)} style={{flex:1,minWidth:'120px'}} />
+                    <button type="submit" className="btn-add">Add</button>
+                  </form>
+                  {thisMonthExpenses.map(e => (
+                    <div key={e.id} className="row-item">
+                      <div>
+                        <div>{e.description}</div>
+                        <div style={{fontSize:'11px',color:'var(--t3)'}}>{CAT_LABELS[e.category]} · {e.date}{e.note ? ` · ${e.note}` : ''}</div>
+                      </div>
+                      <div style={{display:'flex',gap:'8px',alignItems:'center'}}>
+                        <span className="mono" style={{color:'var(--purple)'}}>${Number(e.amount).toFixed(2)}</span>
+                        <button onClick={async () => { await supabase.from('expenses').delete().eq('id', e.id); loadData() }} className="btn-del">✕</button>
+                      </div>
+                    </div>
+                  ))}
+                  <div style={{marginTop:'12px',paddingTop:'12px',borderTop:'1px solid var(--b)',display:'flex',justifyContent:'space-between'}}>
+                    <span style={{fontFamily:'DM Mono,monospace',fontSize:'12px',color:'var(--t3)'}}>This Month Total</span>
+                    <span className="mono" style={{color:'var(--purple)'}}>${totalExpenses.toFixed(2)}</span>
+                  </div>
+                </div>
+              </div>
+            )}
+          </>
+        )}
       </main>
     </div>
   )
