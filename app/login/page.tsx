@@ -54,11 +54,8 @@ export default function Login() {
         <button type="submit" className="border px-4 py-2">
           Login
         </button>
-      </form>
-    </main>
-  )
-}
-<p className="text-sm">
+
+        <p className="text-sm">
           Need an account? <a href="/signup" className="underline">Sign up</a>
         </p>
 
