@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect } from 'react'
 import { createClient } from '@/utils/supabase/client'
 import { useRouter } from 'next/navigation'
 import Sidebar from '@/components/Sidebar'
@@ -36,8 +36,6 @@ export default function BudgetPage() {
   const [extraIncome, setExtraIncome] = useState<any[]>([])
   const [expenses, setExpenses] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
-  const [toast, setToast] = useState<{msg: string, item: any, table: string} | null>(null)
-  const toastTimer = useRef<any>(null)
 
   const [earnerName, setEarnerName] = useState('')
   const [earnerFreq, setEarnerFreq] = useState('monthly')
@@ -79,25 +77,6 @@ export default function BudgetPage() {
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) { router.push('/login'); return null }
     return user
-  }
-
-  function showToast(msg: string, item: any, table: string) {
-    setToast({ msg, item, table })
-    clearTimeout(toastTimer.current)
-    toastTimer.current = setTimeout(() => setToast(null), 5000)
-  }
-
-  async function softDelete(table: string, item: any, label: string) {
-    await supabase.from(table).delete().eq('id', item.id)
-    loadData()
-    showToast(`${label} deleted`, item, table)
-  }
-
-  async function undoDelete(table: string, item: any) {
-    const { id, ...rest } = item
-    await supabase.from(table).insert(rest)
-    setToast(null)
-    loadData()
   }
 
   async function addEarner(e: any) {
@@ -155,32 +134,42 @@ export default function BudgetPage() {
   async function archiveMonth() {
     const user = await getUser(); if (!user) return
     const monthLabel = monthNames[now.getMonth()] + ' ' + now.getFullYear()
+
+    const confirmed = window.confirm(`Archive ${monthLabel} to Records?\n\nIncome: $${totalIncome.toFixed(2)}\nBills: $${totalBills.toFixed(2)}\nExpenses: $${totalExpenses.toFixed(2)}\nLeftover: $${leftover.toFixed(2)}`)
+    if (!confirmed) return
+
+    const snapshot = {
+      paychecks: thisMonthPaychecks,
+      extraIncome: thisMonthExtra,
+      expenses: thisMonthExpenses,
+      bills: bills,
+    }
+
     await supabase.from('records').insert({
       user_id: user.id,
       month: monthLabel,
       total_debt: 0,
-      total_paid: 0,
-      notes: `Income: $${totalIncome.toFixed(2)} · Bills: $${totalBills.toFixed(2)} · Expenses: $${totalExpenses.toFixed(2)} · Leftover: $${leftover.toFixed(2)}`,
+      total_paid: totalIncome,
+      notes: JSON.stringify(snapshot),
     })
-    alert(monthLabel + ' archived to Records!')
+
+    const clearConfirmed = window.confirm(`${monthLabel} archived! Do you want to clear this month's paychecks, extra income, and expenses from the budget?`)
+    if (clearConfirmed) {
+      await Promise.all([
+        ...thisMonthPaychecks.map(p => supabase.from('paychecks').delete().eq('id', p.id)),
+        ...thisMonthExtra.map(e => supabase.from('extra_income').delete().eq('id', e.id)),
+        ...thisMonthExpenses.map(e => supabase.from('expenses').delete().eq('id', e.id)),
+      ])
+      loadData()
+    }
+
+    alert(`${monthLabel} has been archived to Records.`)
   }
 
   return (
     <div className="shell">
       <Sidebar />
       <main className="main">
-
-        {/* Undo Toast */}
-        {toast && (
-          <div style={{position:'fixed',bottom:'24px',right:'24px',background:'var(--surface)',border:'1px solid var(--b2)',borderRadius:'999px',padding:'10px 16px',fontSize:'12px',fontFamily:'DM Mono,monospace',color:'var(--t2)',zIndex:600,display:'flex',alignItems:'center',gap:'12px',boxShadow:'var(--shadow)'}}>
-            <span>{toast.msg}</span>
-            <button onClick={() => undoDelete(toast.table, toast.item)} style={{background:'var(--gdim)',border:'1px solid var(--green)',borderRadius:'999px',color:'var(--green)',fontFamily:'DM Mono,monospace',fontSize:'11px',padding:'4px 10px',cursor:'pointer'}}>
-              Undo
-            </button>
-            <button onClick={() => setToast(null)} style={{background:'none',border:'none',color:'var(--t3)',cursor:'pointer',fontSize:'14px'}}>✕</button>
-          </div>
-        )}
-
         <div className="page-header">
           <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
             <div className="page-title">Budget</div>
@@ -229,7 +218,7 @@ export default function BudgetPage() {
                         <div>{e.name}</div>
                         <div style={{fontSize:'11px',color:'var(--t3)',fontFamily:'DM Mono,monospace'}}>{FREQ_LABELS[e.freq]}</div>
                       </div>
-                      <button onClick={() => softDelete('earners', e, e.name)} className="btn-del">✕</button>
+                      <button onClick={async () => { await supabase.from('earners').delete().eq('id', e.id); loadData() }} className="btn-del">✕</button>
                     </div>
                   ))}
                 </div>
@@ -259,7 +248,7 @@ export default function BudgetPage() {
                         </div>
                         <div style={{display:'flex',gap:'8px',alignItems:'center'}}>
                           <span className="mono green">${Number(p.amount).toFixed(2)}</span>
-                          <button onClick={() => softDelete('paychecks', p, 'Paycheck')} className="btn-del">✕</button>
+                          <button onClick={async () => { await supabase.from('paychecks').delete().eq('id', p.id); loadData() }} className="btn-del">✕</button>
                         </div>
                       </div>
                     )
@@ -291,7 +280,7 @@ export default function BudgetPage() {
                       </div>
                       <div style={{display:'flex',gap:'8px',alignItems:'center'}}>
                         <span className="mono amber">${Number(b.amount).toFixed(2)}</span>
-                        <button onClick={() => softDelete('bills', b, b.name)} className="btn-del">✕</button>
+                        <button onClick={async () => { await supabase.from('bills').delete().eq('id', b.id); loadData() }} className="btn-del">✕</button>
                       </div>
                     </div>
                   ))}
@@ -318,7 +307,7 @@ export default function BudgetPage() {
                       </div>
                       <div style={{display:'flex',gap:'8px',alignItems:'center'}}>
                         <span className="mono green">${Number(e.amount).toFixed(2)}</span>
-                        <button onClick={() => softDelete('extra_income', e, e.description)} className="btn-del">✕</button>
+                        <button onClick={async () => { await supabase.from('extra_income').delete().eq('id', e.id); loadData() }} className="btn-del">✕</button>
                       </div>
                     </div>
                   ))}
@@ -350,7 +339,7 @@ export default function BudgetPage() {
                     </div>
                     <div style={{display:'flex',gap:'8px',alignItems:'center'}}>
                       <span className="mono" style={{color:'var(--purple)'}}>${Number(e.amount).toFixed(2)}</span>
-                      <button onClick={() => softDelete('expenses', e, e.description)} className="btn-del">✕</button>
+                      <button onClick={async () => { await supabase.from('expenses').delete().eq('id', e.id); loadData() }} className="btn-del">✕</button>
                     </div>
                   </div>
                 ))}
