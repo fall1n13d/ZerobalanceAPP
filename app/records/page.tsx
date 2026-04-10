@@ -64,19 +64,15 @@ export default function RecordsPage() {
     const snap = record.snapshot
     const user = await getUser(); if (!user) return
 
-    const inserts: Promise<any>[] = []
-
     if (snap.paychecks?.length) {
-      inserts.push(supabase.from('paychecks').insert(snap.paychecks))
+      await supabase.from('paychecks').insert(snap.paychecks)
     }
     if (snap.extraIncome?.length) {
-      inserts.push(supabase.from('extra_income').insert(snap.extraIncome))
+      await supabase.from('extra_income').insert(snap.extraIncome)
     }
     if (snap.expenses?.length) {
-      inserts.push(supabase.from('expenses').insert(snap.expenses))
+      await supabase.from('expenses').insert(snap.expenses)
     }
-
-    await Promise.all(inserts)
 
     const deleteConfirmed = window.confirm(`Data restored to Budget! Do you also want to delete this record from Records?`)
     if (deleteConfirmed) {
