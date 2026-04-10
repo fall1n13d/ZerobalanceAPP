@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react'
 import { createClient } from '@/utils/supabase/client'
 import { useRouter } from 'next/navigation'
+import Link from 'next/link'
 
 export default function RecordsPage() {
   const supabase = createClient()
@@ -14,15 +15,10 @@ export default function RecordsPage() {
   const [notes, setNotes] = useState('')
   const [loading, setLoading] = useState(true)
 
-  useEffect(() => {
-    loadRecords()
-  }, [])
+  useEffect(() => { loadRecords() }, [])
 
   async function loadRecords() {
-    const { data } = await supabase
-      .from('records')
-      .select('*')
-      .order('created_at', { ascending: false })
+    const { data } = await supabase.from('records').select('*').order('created_at', { ascending: false })
     setRecords(data || [])
     setLoading(false)
   }
@@ -38,10 +34,7 @@ export default function RecordsPage() {
       total_paid: parseFloat(totalPaid),
       notes,
     })
-    setMonth('')
-    setTotalDebt('')
-    setTotalPaid('')
-    setNotes('')
+    setMonth(''); setTotalDebt(''); setTotalPaid(''); setNotes('')
     loadRecords()
   }
 
@@ -50,72 +43,95 @@ export default function RecordsPage() {
     loadRecords()
   }
 
+  const totalPaidAll = records.reduce((sum, r) => sum + Number(r.total_paid), 0)
+
   return (
-    <main className="min-h-screen p-6 max-w-2xl mx-auto">
-      <div className="flex justify-between items-center mb-6">
-        <h1 className="text-2xl font-bold">Records</h1>
-        <a href="/dashboard" className="text-sm underline">Dashboard</a>
-      </div>
-
-      <form onSubmit={addRecord} className="border rounded p-4 space-y-3 mb-6">
-        <h2 className="font-semibold">Add Monthly Record</h2>
-        <input
-          type="text"
-          placeholder="Month (e.g. April 2026)"
-          value={month}
-          onChange={(e) => setMonth(e.target.value)}
-          required
-          className="border p-2 rounded w-full"
-        />
-        <input
-          type="number"
-          placeholder="Total debt"
-          value={totalDebt}
-          onChange={(e) => setTotalDebt(e.target.value)}
-          required
-          className="border p-2 rounded w-full"
-        />
-        <input
-          type="number"
-          placeholder="Total paid this month"
-          value={totalPaid}
-          onChange={(e) => setTotalPaid(e.target.value)}
-          required
-          className="border p-2 rounded w-full"
-        />
-        <textarea
-          placeholder="Notes (optional)"
-          value={notes}
-          onChange={(e) => setNotes(e.target.value)}
-          className="border p-2 rounded w-full"
-          rows={3}
-        />
-        <button type="submit" className="border px-4 py-2 rounded w-full font-semibold">
-          Save Record
-        </button>
-      </form>
-
-      {loading ? <p>Loading...</p> : records.length === 0 ? (
-        <p>No records yet.</p>
-      ) : (
-        <div className="space-y-3">
-          {records.map((r) => (
-            <div key={r.id} className="border rounded p-4">
-              <div className="flex justify-between items-start">
-                <div>
-                  <p className="font-semibold">{r.month}</p>
-                  <p className="text-sm">Total Debt: ${Number(r.total_debt).toFixed(2)}</p>
-                  <p className="text-sm">Paid: ${Number(r.total_paid).toFixed(2)}</p>
-                  {r.notes && <p className="text-sm text-gray-500 mt-1">{r.notes}</p>}
-                </div>
-                <button onClick={() => deleteRecord(r.id)} className="text-red-500 text-sm underline">
-                  Delete
-                </button>
-              </div>
-            </div>
-          ))}
+    <div className="shell">
+      <aside className="sidebar">
+        <div className="logo">
+          <div className="logo-name">Zero Balance</div>
+          <div className="logo-sub">Debt Freedom System</div>
         </div>
-      )}
-    </main>
+        <nav className="nav-links">
+          <Link href="/debts" className="nav-item">💳 My Debts</Link>
+          <Link href="/budget" className="nav-item">💰 Budget</Link>
+          <Link href="/records" className="nav-item active">📋 Records</Link>
+          <Link href="/snowball" className="nav-item">❄️ Snowball</Link>
+        </nav>
+        <div className="nav-logout">
+          <Link href="/login" className="btn-logout" style={{display:'block',textAlign:'center',textDecoration:'none'}}>Sign Out</Link>
+        </div>
+      </aside>
+      <main className="main">
+        <div className="page-header">
+          <div className="page-title">Records</div>
+          <div style={{fontSize:'13px',color:'var(--t3)',marginTop:'8px'}}>Track your monthly progress</div>
+        </div>
+
+        <div style={{display:'grid',gridTemplateColumns:'repeat(2,1fr)',gap:'14px',marginBottom:'16px'}}>
+          <div className="metric-card">
+            <div className="metric-label">Total Months Tracked</div>
+            <div className="metric-value green">{records.length}</div>
+          </div>
+          <div className="metric-card">
+            <div className="metric-label">Total Paid All Time</div>
+            <div className="metric-value amber">${totalPaidAll.toFixed(2)}</div>
+          </div>
+        </div>
+
+        <div className="card" style={{marginBottom:'16px'}}>
+          <div className="card-head">
+            <span className="card-title">Add Monthly Record</span>
+          </div>
+          <div className="card-body">
+            <form onSubmit={addRecord} style={{display:'grid',gridTemplateColumns:'2fr 1fr 1fr auto',gap:'10px',alignItems:'end'}}>
+              <div>
+                <div style={{fontSize:'10px',color:'var(--t3)',fontFamily:'DM Mono,monospace',textTransform:'uppercase',letterSpacing:'.06em',marginBottom:'4px'}}>Month</div>
+                <input className="fi" type="text" placeholder="April 2026" value={month} onChange={(e) => setMonth(e.target.value)} required />
+              </div>
+              <div>
+                <div style={{fontSize:'10px',color:'var(--t3)',fontFamily:'DM Mono,monospace',textTransform:'uppercase',letterSpacing:'.06em',marginBottom:'4px'}}>Total Debt</div>
+                <input className="fi" type="number" placeholder="0.00" value={totalDebt} onChange={(e) => setTotalDebt(e.target.value)} required />
+              </div>
+              <div>
+                <div style={{fontSize:'10px',color:'var(--t3)',fontFamily:'DM Mono,monospace',textTransform:'uppercase',letterSpacing:'.06em',marginBottom:'4px'}}>Paid This Month</div>
+                <input className="fi" type="number" placeholder="0.00" value={totalPaid} onChange={(e) => setTotalPaid(e.target.value)} required />
+              </div>
+              <button type="submit" className="btn-add">Add</button>
+            </form>
+            <div style={{marginTop:'10px'}}>
+              <div style={{fontSize:'10px',color:'var(--t3)',fontFamily:'DM Mono,monospace',textTransform:'uppercase',letterSpacing:'.06em',marginBottom:'4px'}}>Notes (optional)</div>
+              <input className="fi" type="text" placeholder="Any notes for this month..." value={notes} onChange={(e) => setNotes(e.target.value)} />
+            </div>
+          </div>
+        </div>
+
+        <div className="card">
+          <div className="card-head">
+            <span className="card-title">Monthly Records</span>
+            <span style={{fontSize:'11px',fontFamily:'DM Mono,monospace',background:'var(--s2)',border:'1px solid var(--b)',borderRadius:'999px',padding:'3px 10px',color:'var(--t3)'}}>{records.length} months</span>
+          </div>
+          {loading ? (
+            <div className="card-body"><p style={{color:'var(--t3)'}}>Loading...</p></div>
+          ) : records.length === 0 ? (
+            <div className="card-body"><p style={{color:'var(--t3)'}}>No records yet.</p></div>
+          ) : (
+            records.map((r) => (
+              <div key={r.id} style={{padding:'14px 18px',borderBottom:'1px solid var(--b)',display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+                <div>
+                  <div style={{fontFamily:'Syne,sans-serif',fontWeight:700,fontSize:'15px',marginBottom:'4px'}}>{r.month}</div>
+                  <div style={{display:'flex',gap:'16px'}}>
+                    <span style={{fontSize:'12px',fontFamily:'DM Mono,monospace',color:'var(--red)'}}>Debt: ${Number(r.total_debt).toFixed(2)}</span>
+                    <span style={{fontSize:'12px',fontFamily:'DM Mono,monospace',color:'var(--green)'}}>Paid: ${Number(r.total_paid).toFixed(2)}</span>
+                  </div>
+                  {r.notes && <div style={{fontSize:'12px',color:'var(--t3)',marginTop:'4px'}}>{r.notes}</div>}
+                </div>
+                <button onClick={() => deleteRecord(r.id)} className="btn-del">✕</button>
+              </div>
+            ))
+          )}
+        </div>
+      </main>
+    </div>
   )
 }
