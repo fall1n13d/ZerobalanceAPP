@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react'
 import { createClient } from '@/utils/supabase/client'
 import { useRouter } from 'next/navigation'
+import Link from 'next/link'
 
 export default function DebtsPage() {
   const supabase = createClient()
@@ -14,17 +15,11 @@ export default function DebtsPage() {
   const [apr, setApr] = useState('')
   const [loading, setLoading] = useState(true)
 
-  useEffect(() => {
-    loadDebts()
-  }, [])
+  useEffect(() => { loadDebts() }, [])
 
   async function loadDebts() {
-    const { data, error } = await supabase
-      .from('debts')
-      .select('*')
-      .order('created_at', { ascending: true })
-    if (error) console.error(error)
-    else setDebts(data || [])
+    const { data } = await supabase.from('debts').select('*').order('created_at', { ascending: true })
+    setDebts(data || [])
     setLoading(false)
   }
 
@@ -32,18 +27,14 @@ export default function DebtsPage() {
     e.preventDefault()
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return router.push('/login')
-    const { error } = await supabase.from('debts').insert({
+    await supabase.from('debts').insert({
       user_id: user.id,
       name,
       balance: parseFloat(balance),
       min_payment: parseFloat(minPayment),
       apr: parseFloat(apr),
     })
-    if (error) { console.error(error); return }
-    setName('')
-    setBalance('')
-    setMinPayment('')
-    setApr('')
+    setName(''); setBalance(''); setMinPayment(''); setApr('')
     loadDebts()
   }
 
@@ -53,45 +44,104 @@ export default function DebtsPage() {
   }
 
   const totalBalance = debts.reduce((sum, d) => sum + Number(d.balance), 0)
-  const totalMinPayment = debts.reduce((sum, d) => sum + Number(d.min_payment), 0)
+  const totalMin = debts.reduce((sum, d) => sum + Number(d.min_payment), 0)
 
   return (
-    <main className="min-h-screen p-6 max-w-2xl mx-auto">
-      <div className="flex justify-between items-center mb-6">
-        <h1 className="text-2xl font-bold">My Debts</h1>
-        <a href="/dashboard" className="text-sm underline">Dashboard</a>
-      </div>
-      <form onSubmit={addDebt} className="border rounded p-4 space-y-3 mb-6">
-        <h2 className="font-semibold">Add Debt</h2>
-        <input type="text" placeholder="Debt name" value={name} onChange={(e) => setName(e.target.value)} required className="border p-2 w-full rounded" />
-        <input type="number" placeholder="Balance" value={balance} onChange={(e) => setBalance(e.target.value)} required className="border p-2 w-full rounded" />
-        <input type="number" placeholder="Min payment" value={minPayment} onChange={(e) => setMinPayment(e.target.value)} required className="border p-2 w-full rounded" />
-        <input type="number" placeholder="APR %" value={apr} onChange={(e) => setApr(e.target.value)} required className="border p-2 w-full rounded" />
-        <button type="submit" className="border px-4 py-2 rounded w-full font-semibold">Add Debt</button>
-      </form>
-      {loading ? (
-        <p>Loading...</p>
-      ) : debts.length === 0 ? (
-        <p>No debts added yet.</p>
-      ) : (
-        <div className="space-y-3">
-          {debts.map((debt) => (
-            <div key={debt.id} className="border rounded p-4 flex justify-between items-center">
-              <div>
-                <p className="font-semibold">{debt.name}</p>
-                <p className="text-sm">Balance: ${Number(debt.balance).toFixed(2)}</p>
-                <p className="text-sm">Min Payment: ${Number(debt.min_payment).toFixed(2)}</p>
-                <p className="text-sm">APR: {debt.apr}%</p>
-              </div>
-              <button onClick={() => deleteDebt(debt.id)} className="text-red-500 text-sm underline">Delete</button>
-            </div>
-          ))}
-          <div className="border rounded p-4">
-            <p className="font-semibold">Total Balance: ${totalBalance.toFixed(2)}</p>
-            <p className="font-semibold">Total Min Payment: ${totalMinPayment.toFixed(2)}</p>
+    <div className="shell">
+      <aside className="sidebar">
+        <div className="logo">
+          <div className="logo-name">Zero Balance</div>
+          <div className="logo-sub">Debt Freedom System</div>
+        </div>
+        <nav className="nav-links">
+          <Link href="/debts" className="nav-item active">💳 My Debts</Link>
+          <Link href="/budget" className="nav-item">💰 Budget</Link>
+          <Link href="/records" className="nav-item">📋 Records</Link>
+          <Link href="/snowball" className="nav-item">❄️ Snowball</Link>
+        </nav>
+        <div className="nav-logout">
+          <Link href="/login" className="btn-logout" style={{display:'block',textAlign:'center',textDecoration:'none'}}>Sign Out</Link>
+        </div>
+      </aside>
+      <main className="main">
+        <div className="page-header">
+          <div className="page-title">My Debts</div>
+          <div style={{fontSize:'13px',color:'var(--t3)',marginTop:'8px'}}>Track and manage all your debts</div>
+        </div>
+
+        <div style={{display:'grid',gridTemplateColumns:'repeat(2,1fr)',gap:'14px',marginBottom:'16px'}}>
+          <div className="metric-card">
+            <div className="metric-label">Total Balance</div>
+            <div className="metric-value red">${totalBalance.toFixed(2)}</div>
+          </div>
+          <div className="metric-card">
+            <div className="metric-label">Total Min Payment</div>
+            <div className="metric-value amber">${totalMin.toFixed(2)}</div>
           </div>
         </div>
-      )}
-    </main>
+
+        <div className="card">
+          <div className="card-head">
+            <span className="card-title">Add Debt</span>
+          </div>
+          <div className="card-body">
+            <form onSubmit={addDebt} style={{display:'grid',gridTemplateColumns:'2fr 1fr 1fr 1fr auto',gap:'10px',alignItems:'end'}}>
+              <div>
+                <div style={{fontSize:'10px',color:'var(--t3)',fontFamily:'DM Mono,monospace',textTransform:'uppercase',letterSpacing:'.06em',marginBottom:'4px'}}>Name</div>
+                <input className="fi" type="text" placeholder="Credit Card" value={name} onChange={(e) => setName(e.target.value)} required />
+              </div>
+              <div>
+                <div style={{fontSize:'10px',color:'var(--t3)',fontFamily:'DM Mono,monospace',textTransform:'uppercase',letterSpacing:'.06em',marginBottom:'4px'}}>Balance</div>
+                <input className="fi" type="number" placeholder="0.00" value={balance} onChange={(e) => setBalance(e.target.value)} required />
+              </div>
+              <div>
+                <div style={{fontSize:'10px',color:'var(--t3)',fontFamily:'DM Mono,monospace',textTransform:'uppercase',letterSpacing:'.06em',marginBottom:'4px'}}>Min Payment</div>
+                <input className="fi" type="number" placeholder="0.00" value={minPayment} onChange={(e) => setMinPayment(e.target.value)} required />
+              </div>
+              <div>
+                <div style={{fontSize:'10px',color:'var(--t3)',fontFamily:'DM Mono,monospace',textTransform:'uppercase',letterSpacing:'.06em',marginBottom:'4px'}}>APR %</div>
+                <input className="fi" type="number" placeholder="0.00" value={apr} onChange={(e) => setApr(e.target.value)} required />
+              </div>
+              <button type="submit" className="btn-add">Add</button>
+            </form>
+          </div>
+        </div>
+
+        <div className="card">
+          <div className="card-head">
+            <span className="card-title">Debts</span>
+            <span style={{fontSize:'11px',fontFamily:'DM Mono,monospace',background:'var(--s2)',border:'1px solid var(--b)',borderRadius:'999px',padding:'3px 10px',color:'var(--t3)'}}>{debts.length} total</span>
+          </div>
+          {loading ? (
+            <div className="card-body"><p style={{color:'var(--t3)'}}>Loading...</p></div>
+          ) : debts.length === 0 ? (
+            <div className="card-body"><p style={{color:'var(--t3)'}}>No debts added yet.</p></div>
+          ) : (
+            <table style={{width:'100%',borderCollapse:'collapse'}}>
+              <thead>
+                <tr>
+                  {['Name','Balance','Min Payment','APR',''].map(h => (
+                    <th key={h} style={{padding:'10px 16px',fontSize:'10px',fontWeight:600,color:'var(--t3)',textTransform:'uppercase',letterSpacing:'.09em',fontFamily:'DM Mono,monospace',textAlign:'left',background:'var(--s2)',borderBottom:'1px solid var(--b)'}}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {debts.map((d, i) => (
+                  <tr key={d.id} style={{background: i % 2 === 0 ? 'var(--s2)' : 'transparent'}}>
+                    <td style={{padding:'10px 16px',fontSize:'13px',borderBottom:'1px solid var(--b)'}}>{d.name}</td>
+                    <td style={{padding:'10px 16px',fontSize:'13px',fontFamily:'DM Mono,monospace',color:'var(--red)',borderBottom:'1px solid var(--b)'}}>${Number(d.balance).toFixed(2)}</td>
+                    <td style={{padding:'10px 16px',fontSize:'13px',fontFamily:'DM Mono,monospace',color:'var(--amber)',borderBottom:'1px solid var(--b)'}}>${Number(d.min_payment).toFixed(2)}</td>
+                    <td style={{padding:'10px 16px',fontSize:'13px',fontFamily:'DM Mono,monospace',color:'var(--amber)',borderBottom:'1px solid var(--b)'}}>{d.apr}%</td>
+                    <td style={{padding:'10px 16px',borderBottom:'1px solid var(--b)'}}>
+                      <button onClick={() => deleteDebt(d.id)} className="btn-del">✕</button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+      </main>
+    </div>
   )
 }
