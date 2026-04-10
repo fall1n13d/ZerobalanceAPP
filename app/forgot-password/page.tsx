@@ -13,7 +13,7 @@ export default function ForgotPassword() {
     e.preventDefault()
 
     const { error } = await supabase.auth.resetPasswordForEmail(email, {
-      redirectTo: 'https://zerobalance-app.vercel.app/reset-password',
+      redirectTo: 'https://zerobalance-app.vercel.app/auth/callback',
     })
 
     if (error) {
@@ -25,29 +25,4 @@ export default function ForgotPassword() {
   }
 
   return (
-    <main className="flex min-h-screen items-center justify-center">
-      <form onSubmit={handleReset} className="space-y-4 border p-6 rounded">
-        <h1>Forgot Password</h1>
-
-        <input
-          type="email"
-          placeholder="Your email"
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-          className="border p-2 w-full"
-        />
-
-        {error && <p className="text-red-500">{error}</p>}
-        {message && <p className="text-green-500">{message}</p>}
-
-        <button type="submit" className="border px-4 py-2">
-          Send Reset Link
-        </button>
-
-        <p className="text-sm">
-          <a href="/login" className="underline">Back to login</a>
-        </p>
-      </form>
-    </main>
-  )
-}
+    <main className="flex min-h-screen items-center justify-cente
