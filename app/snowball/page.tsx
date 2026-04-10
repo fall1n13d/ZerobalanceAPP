@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react'
 import { createClient } from '@/utils/supabase/client'
 import Link from 'next/link'
+import Sidebar from '@/components/Sidebar'
 
 export default function SnowballPage() {
   const supabase = createClient()
@@ -63,21 +64,7 @@ export default function SnowballPage() {
 
   return (
     <div className="shell">
-      <aside className="sidebar">
-        <div className="logo">
-          <div className="logo-name">Zero Balance</div>
-          <div className="logo-sub">Debt Freedom System</div>
-        </div>
-        <nav className="nav-links">
-          <Link href="/debts" className="nav-item">💳 My Debts</Link>
-          <Link href="/budget" className="nav-item">💰 Budget</Link>
-          <Link href="/records" className="nav-item">📋 Records</Link>
-          <Link href="/snowball" className="nav-item active">❄️ Snowball</Link>
-        </nav>
-        <div className="nav-logout">
-          <Link href="/login" className="btn-logout" style={{display:'block',textAlign:'center',textDecoration:'none'}}>Sign Out</Link>
-        </div>
-      </aside>
+      <Sidebar />
       <main className="main">
         <div className="page-header">
           <div className="page-title">Snowball</div>
