@@ -36,7 +36,6 @@ export default function BudgetPage() {
   const [extraIncome, setExtraIncome] = useState<any[]>([])
   const [expenses, setExpenses] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
-  const [activeTab, setActiveTab] = useState('income')
 
   const [earnerName, setEarnerName] = useState('')
   const [earnerFreq, setEarnerFreq] = useState('monthly')
@@ -130,20 +129,6 @@ export default function BudgetPage() {
   const totalExpenses = thisMonthExpenses.reduce((s, e) => s + Number(e.amount), 0)
   const leftover = totalIncome - totalBills - totalExpenses
 
-  const tabStyle = (tab: string) => ({
-    padding: '8px 16px',
-    borderRadius: '10px',
-    border: '1px solid transparent',
-    background: activeTab === tab ? 'var(--gdim)' : 'var(--s2)',
-    color: activeTab === tab ? 'var(--green)' : 'var(--t2)',
-    borderColor: activeTab === tab ? 'var(--gmid)' : 'transparent',
-    cursor: 'pointer',
-    fontFamily: 'DM Mono,monospace',
-    fontSize: '12px',
-    fontWeight: 500,
-    transition: 'all .15s',
-  })
-
   return (
     <div className="shell">
       <Sidebar />
@@ -153,6 +138,7 @@ export default function BudgetPage() {
           <div style={{fontSize:'13px',color:'var(--t3)',marginTop:'8px'}}>Track your income, bills and expenses</div>
         </div>
 
+        {/* Summary Cards */}
         <div style={{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:'14px',marginBottom:'16px'}}>
           <div className="metric-card">
             <div className="metric-label">This Month Income</div>
@@ -172,87 +158,82 @@ export default function BudgetPage() {
           </div>
         </div>
 
-        <div style={{display:'flex',gap:'8px',marginBottom:'16px',flexWrap:'wrap'}}>
-          {['income','bills','extra','expenses'].map(tab => (
-            <button key={tab} style={tabStyle(tab)} onClick={() => setActiveTab(tab)}>
-              {tab === 'income' ? '💰 Paychecks' : tab === 'bills' ? '📋 Bills' : tab === 'extra' ? '➕ Extra Income' : '🧾 Expenses'}
-            </button>
-          ))}
-        </div>
-
         {loading ? <p style={{color:'var(--t3)'}}>Loading...</p> : (
           <>
-            {activeTab === 'income' && (
-              <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'16px'}}>
-                <div className="card">
-                  <div className="card-head"><span className="card-title">Earners</span></div>
-                  <div className="card-body">
-                    <form onSubmit={addEarner} style={{display:'flex',gap:'8px',marginBottom:'16px'}}>
-                      <input className="fi" type="text" placeholder="Name" value={earnerName} onChange={e => setEarnerName(e.target.value)} required />
-                      <select className="fi" value={earnerFreq} onChange={e => setEarnerFreq(e.target.value)} style={{width:'140px'}}>
-                        {Object.entries(FREQ_LABELS).map(([k,v]) => <option key={k} value={k}>{v}</option>)}
-                      </select>
-                      <button type="submit" className="btn-add">Add</button>
-                    </form>
-                    {earners.map(e => (
-                      <div key={e.id} className="row-item">
-                        <div>
-                          <div>{e.name}</div>
-                          <div style={{fontSize:'11px',color:'var(--t3)',fontFamily:'DM Mono,monospace'}}>{FREQ_LABELS[e.freq]}</div>
-                        </div>
-                        <button onClick={async () => { await supabase.from('earners').delete().eq('id', e.id); loadData() }} className="btn-del">✕</button>
+            {/* Row 1: Earners + Paychecks */}
+            <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'16px',marginBottom:'16px'}}>
+              <div className="card">
+                <div className="card-head"><span className="card-title">👤 Earners</span></div>
+                <div className="card-body">
+                  <form onSubmit={addEarner} style={{display:'flex',gap:'8px',marginBottom:'16px'}}>
+                    <input className="fi" type="text" placeholder="Name" value={earnerName} onChange={e => setEarnerName(e.target.value)} required />
+                    <select className="fi" value={earnerFreq} onChange={e => setEarnerFreq(e.target.value)} style={{width:'140px'}}>
+                      {Object.entries(FREQ_LABELS).map(([k,v]) => <option key={k} value={k}>{v}</option>)}
+                    </select>
+                    <button type="submit" className="btn-add">Add</button>
+                  </form>
+                  {earners.length === 0 ? <p style={{color:'var(--t3)',fontSize:'13px'}}>No earners yet.</p> : earners.map(e => (
+                    <div key={e.id} className="row-item">
+                      <div>
+                        <div>{e.name}</div>
+                        <div style={{fontSize:'11px',color:'var(--t3)',fontFamily:'DM Mono,monospace'}}>{FREQ_LABELS[e.freq]}</div>
                       </div>
-                    ))}
-                  </div>
-                </div>
-
-                <div className="card">
-                  <div className="card-head"><span className="card-title">Log Paycheck</span></div>
-                  <div className="card-body">
-                    <form onSubmit={addPaycheck} style={{display:'flex',flexDirection:'column',gap:'10px',marginBottom:'16px'}}>
-                      <select className="fi" value={pcEarnerId} onChange={e => setPcEarnerId(e.target.value)} required>
-                        <option value="">Select earner</option>
-                        {earners.map(e => <option key={e.id} value={e.id}>{e.name}</option>)}
-                      </select>
-                      <div style={{display:'flex',gap:'8px'}}>
-                        <input className="fi" type="number" placeholder="Amount" value={pcAmount} onChange={e => setPcAmount(e.target.value)} required />
-                        <DateInput value={pcDate} onChange={setPcDate} />
-                      </div>
-                      <button type="submit" className="btn-add">Log Paycheck</button>
-                    </form>
-                    {thisMonthPaychecks.map(p => {
-                      const earner = earners.find(e => e.id === p.earner_id)
-                      return (
-                        <div key={p.id} className="row-item">
-                          <div>
-                            <div style={{fontSize:'12px',color:'var(--t2)'}}>{earner?.name || 'Unknown'}</div>
-                            <div style={{fontSize:'11px',color:'var(--t3)',fontFamily:'DM Mono,monospace'}}>{p.date}</div>
-                          </div>
-                          <div style={{display:'flex',gap:'8px',alignItems:'center'}}>
-                            <span className="mono green">${Number(p.amount).toFixed(2)}</span>
-                            <button onClick={async () => { await supabase.from('paychecks').delete().eq('id', p.id); loadData() }} className="btn-del">✕</button>
-                          </div>
-                        </div>
-                      )
-                    })}
-                  </div>
+                      <button onClick={async () => { await supabase.from('earners').delete().eq('id', e.id); loadData() }} className="btn-del">✕</button>
+                    </div>
+                  ))}
                 </div>
               </div>
-            )}
 
-            {activeTab === 'bills' && (
               <div className="card">
-                <div className="card-head"><span className="card-title">Monthly Bills</span></div>
+                <div className="card-head"><span className="card-title">💵 Log Paycheck</span></div>
                 <div className="card-body">
-                  <form onSubmit={addBill} style={{display:'flex',gap:'8px',marginBottom:'16px'}}>
-                    <input className="fi" type="text" placeholder="Bill name" value={billName} onChange={e => setBillName(e.target.value)} required />
-                    <input className="fi" type="number" placeholder="Amount" value={billAmount} onChange={e => setBillAmount(e.target.value)} required style={{width:'120px'}} />
-                    <select className="fi" value={billCat} onChange={e => setBillCat(e.target.value)} style={{width:'160px'}}>
+                  <form onSubmit={addPaycheck} style={{display:'flex',flexDirection:'column',gap:'10px',marginBottom:'16px'}}>
+                    <select className="fi" value={pcEarnerId} onChange={e => setPcEarnerId(e.target.value)} required>
+                      <option value="">Select earner</option>
+                      {earners.map(e => <option key={e.id} value={e.id}>{e.name}</option>)}
+                    </select>
+                    <div style={{display:'flex',gap:'8px'}}>
+                      <input className="fi" type="number" placeholder="Amount" value={pcAmount} onChange={e => setPcAmount(e.target.value)} required />
+                      <DateInput value={pcDate} onChange={setPcDate} />
+                    </div>
+                    <button type="submit" className="btn-add">Log Paycheck</button>
+                  </form>
+                  {thisMonthPaychecks.length === 0 ? <p style={{color:'var(--t3)',fontSize:'13px'}}>No paychecks this month.</p> : thisMonthPaychecks.map(p => {
+                    const earner = earners.find(e => e.id === p.earner_id)
+                    return (
+                      <div key={p.id} className="row-item">
+                        <div>
+                          <div style={{fontSize:'12px',color:'var(--t2)'}}>{earner?.name || 'Unknown'}</div>
+                          <div style={{fontSize:'11px',color:'var(--t3)',fontFamily:'DM Mono,monospace'}}>{p.date}</div>
+                        </div>
+                        <div style={{display:'flex',gap:'8px',alignItems:'center'}}>
+                          <span className="mono green">${Number(p.amount).toFixed(2)}</span>
+                          <button onClick={async () => { await supabase.from('paychecks').delete().eq('id', p.id); loadData() }} className="btn-del">✕</button>
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+            </div>
+
+            {/* Row 2: Bills + Extra Income */}
+            <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'16px',marginBottom:'16px'}}>
+              <div className="card">
+                <div className="card-head">
+                  <span className="card-title">📋 Monthly Bills</span>
+                  <span className="mono amber" style={{fontSize:'13px'}}>${totalBills.toFixed(2)}</span>
+                </div>
+                <div className="card-body">
+                  <form onSubmit={addBill} style={{display:'flex',gap:'8px',marginBottom:'16px',flexWrap:'wrap'}}>
+                    <input className="fi" type="text" placeholder="Bill name" value={billName} onChange={e => setBillName(e.target.value)} required style={{flex:2,minWidth:'120px'}} />
+                    <input className="fi" type="number" placeholder="Amount" value={billAmount} onChange={e => setBillAmount(e.target.value)} required style={{width:'110px'}} />
+                    <select className="fi" value={billCat} onChange={e => setBillCat(e.target.value)} style={{width:'150px'}}>
                       {Object.entries(CAT_LABELS).map(([k,v]) => <option key={k} value={k}>{v}</option>)}
                     </select>
                     <button type="submit" className="btn-add">Add</button>
                   </form>
-                  {bills.map(b => (
+                  {bills.length === 0 ? <p style={{color:'var(--t3)',fontSize:'13px'}}>No bills yet.</p> : bills.map(b => (
                     <div key={b.id} className="row-item">
                       <div>
                         <div>{b.name}</div>
@@ -264,28 +245,22 @@ export default function BudgetPage() {
                       </div>
                     </div>
                   ))}
-                  <div style={{marginTop:'12px',paddingTop:'12px',borderTop:'1px solid var(--b)',display:'flex',justifyContent:'space-between'}}>
-                    <span style={{fontFamily:'DM Mono,monospace',fontSize:'12px',color:'var(--t3)'}}>Total</span>
-                    <span className="mono amber">${totalBills.toFixed(2)}</span>
-                  </div>
                 </div>
               </div>
-            )}
 
-            {activeTab === 'extra' && (
               <div className="card">
-                <div className="card-head"><span className="card-title">Extra Income</span></div>
+                <div className="card-head"><span className="card-title">➕ Extra Income</span></div>
                 <div className="card-body">
                   <form onSubmit={addExtraIncome} style={{display:'flex',gap:'8px',marginBottom:'16px',flexWrap:'wrap'}}>
-                    <input className="fi" type="text" placeholder="Description" value={eiDesc} onChange={e => setEiDesc(e.target.value)} required style={{flex:2,minWidth:'150px'}} />
-                    <input className="fi" type="number" placeholder="Amount" value={eiAmount} onChange={e => setEiAmount(e.target.value)} required style={{width:'120px'}} />
-                    <select className="fi" value={eiCat} onChange={e => setEiCat(e.target.value)} style={{width:'160px'}}>
+                    <input className="fi" type="text" placeholder="Description" value={eiDesc} onChange={e => setEiDesc(e.target.value)} required style={{flex:2,minWidth:'120px'}} />
+                    <input className="fi" type="number" placeholder="Amount" value={eiAmount} onChange={e => setEiAmount(e.target.value)} required style={{width:'110px'}} />
+                    <select className="fi" value={eiCat} onChange={e => setEiCat(e.target.value)} style={{width:'150px'}}>
                       {Object.entries(CAT_LABELS).map(([k,v]) => <option key={k} value={k}>{v}</option>)}
                     </select>
                     <DateInput value={eiDate} onChange={setEiDate} />
                     <button type="submit" className="btn-add">Add</button>
                   </form>
-                  {extraIncome.map(e => (
+                  {thisMonthExtra.length === 0 ? <p style={{color:'var(--t3)',fontSize:'13px'}}>No extra income this month.</p> : thisMonthExtra.map(e => (
                     <div key={e.id} className="row-item">
                       <div>
                         <div>{e.description}</div>
@@ -299,41 +274,39 @@ export default function BudgetPage() {
                   ))}
                 </div>
               </div>
-            )}
+            </div>
 
-            {activeTab === 'expenses' && (
-              <div className="card">
-                <div className="card-head"><span className="card-title">Expenses</span></div>
-                <div className="card-body">
-                  <form onSubmit={addExpense} style={{display:'flex',gap:'8px',marginBottom:'16px',flexWrap:'wrap'}}>
-                    <input className="fi" type="text" placeholder="Description" value={exDesc} onChange={e => setExDesc(e.target.value)} required style={{flex:2,minWidth:'150px'}} />
-                    <input className="fi" type="number" placeholder="Amount" value={exAmount} onChange={e => setExAmount(e.target.value)} required style={{width:'120px'}} />
-                    <select className="fi" value={exCat} onChange={e => setExCat(e.target.value)} style={{width:'160px'}}>
-                      {Object.entries(CAT_LABELS).map(([k,v]) => <option key={k} value={k}>{v}</option>)}
-                    </select>
-                    <DateInput value={exDate} onChange={setExDate} />
-                    <input className="fi" type="text" placeholder="Note (optional)" value={exNote} onChange={e => setExNote(e.target.value)} style={{flex:1,minWidth:'120px'}} />
-                    <button type="submit" className="btn-add">Add</button>
-                  </form>
-                  {thisMonthExpenses.map(e => (
-                    <div key={e.id} className="row-item">
-                      <div>
-                        <div>{e.description}</div>
-                        <div style={{fontSize:'11px',color:'var(--t3)'}}>{CAT_LABELS[e.category]} · {e.date}{e.note ? ` · ${e.note}` : ''}</div>
-                      </div>
-                      <div style={{display:'flex',gap:'8px',alignItems:'center'}}>
-                        <span className="mono" style={{color:'var(--purple)'}}>${Number(e.amount).toFixed(2)}</span>
-                        <button onClick={async () => { await supabase.from('expenses').delete().eq('id', e.id); loadData() }} className="btn-del">✕</button>
-                      </div>
-                    </div>
-                  ))}
-                  <div style={{marginTop:'12px',paddingTop:'12px',borderTop:'1px solid var(--b)',display:'flex',justifyContent:'space-between'}}>
-                    <span style={{fontFamily:'DM Mono,monospace',fontSize:'12px',color:'var(--t3)'}}>This Month Total</span>
-                    <span className="mono" style={{color:'var(--purple)'}}>${totalExpenses.toFixed(2)}</span>
-                  </div>
-                </div>
+            {/* Row 3: Expenses */}
+            <div className="card">
+              <div className="card-head">
+                <span className="card-title">🧾 Expenses This Month</span>
+                <span className="mono" style={{fontSize:'13px',color:'var(--purple)'}}>${totalExpenses.toFixed(2)}</span>
               </div>
-            )}
+              <div className="card-body">
+                <form onSubmit={addExpense} style={{display:'flex',gap:'8px',marginBottom:'16px',flexWrap:'wrap'}}>
+                  <input className="fi" type="text" placeholder="Description" value={exDesc} onChange={e => setExDesc(e.target.value)} required style={{flex:2,minWidth:'150px'}} />
+                  <input className="fi" type="number" placeholder="Amount" value={exAmount} onChange={e => setExAmount(e.target.value)} required style={{width:'110px'}} />
+                  <select className="fi" value={exCat} onChange={e => setExCat(e.target.value)} style={{width:'150px'}}>
+                    {Object.entries(CAT_LABELS).map(([k,v]) => <option key={k} value={k}>{v}</option>)}
+                  </select>
+                  <DateInput value={exDate} onChange={setExDate} />
+                  <input className="fi" type="text" placeholder="Note (optional)" value={exNote} onChange={e => setExNote(e.target.value)} style={{flex:1,minWidth:'120px'}} />
+                  <button type="submit" className="btn-add">Add</button>
+                </form>
+                {thisMonthExpenses.length === 0 ? <p style={{color:'var(--t3)',fontSize:'13px'}}>No expenses this month.</p> : thisMonthExpenses.map(e => (
+                  <div key={e.id} className="row-item">
+                    <div>
+                      <div>{e.description}</div>
+                      <div style={{fontSize:'11px',color:'var(--t3)'}}>{CAT_LABELS[e.category]} · {e.date}{e.note ? ` · ${e.note}` : ''}</div>
+                    </div>
+                    <div style={{display:'flex',gap:'8px',alignItems:'center'}}>
+                      <span className="mono" style={{color:'var(--purple)'}}>${Number(e.amount).toFixed(2)}</span>
+                      <button onClick={async () => { await supabase.from('expenses').delete().eq('id', e.id); loadData() }} className="btn-del">✕</button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
           </>
         )}
       </main>
