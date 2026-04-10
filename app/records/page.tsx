@@ -73,6 +73,9 @@ export default function RecordsPage() {
     if (snap.expenses?.length) {
       await supabase.from('expenses').insert(snap.expenses)
     }
+    if (snap.bills?.length) {
+      await supabase.from('bills').insert(snap.bills)
+    }
 
     const deleteConfirmed = window.confirm(`Data restored to Budget! Do you also want to delete this record from Records?`)
     if (deleteConfirmed) {
