@@ -129,16 +129,35 @@ export default function BudgetPage() {
   const totalExpenses = thisMonthExpenses.reduce((s, e) => s + Number(e.amount), 0)
   const leftover = totalIncome - totalBills - totalExpenses
 
+  const monthNames = ['January','February','March','April','May','June','July','August','September','October','November','December']
+
+  async function archiveMonth() {
+    const user = await getUser(); if (!user) return
+    const monthLabel = monthNames[now.getMonth()] + ' ' + now.getFullYear()
+    await supabase.from('records').insert({
+      user_id: user.id,
+      month: monthLabel,
+      total_debt: 0,
+      total_paid: 0,
+      notes: `Income: $${totalIncome.toFixed(2)} · Bills: $${totalBills.toFixed(2)} · Expenses: $${totalExpenses.toFixed(2)} · Leftover: $${leftover.toFixed(2)}`,
+    })
+    alert(monthLabel + ' archived to Records!')
+  }
+
   return (
     <div className="shell">
       <Sidebar />
       <main className="main">
         <div className="page-header">
-          <div className="page-title">Budget</div>
+          <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+            <div className="page-title">Budget</div>
+            <button onClick={archiveMonth} className="btn-add" style={{fontSize:'12px',padding:'8px 16px'}}>
+              📦 Archive This Month
+            </button>
+          </div>
           <div style={{fontSize:'13px',color:'var(--t3)',marginTop:'8px'}}>Track your income, bills and expenses</div>
         </div>
 
-        {/* Summary Cards */}
         <div style={{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:'14px',marginBottom:'16px'}}>
           <div className="metric-card">
             <div className="metric-label">This Month Income</div>
@@ -160,7 +179,6 @@ export default function BudgetPage() {
 
         {loading ? <p style={{color:'var(--t3)'}}>Loading...</p> : (
           <>
-            {/* Row 1: Earners + Paychecks */}
             <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'16px',marginBottom:'16px'}}>
               <div className="card">
                 <div className="card-head"><span className="card-title">👤 Earners</span></div>
@@ -217,7 +235,6 @@ export default function BudgetPage() {
               </div>
             </div>
 
-            {/* Row 2: Bills + Extra Income */}
             <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'16px',marginBottom:'16px'}}>
               <div className="card">
                 <div className="card-head">
@@ -276,7 +293,6 @@ export default function BudgetPage() {
               </div>
             </div>
 
-            {/* Row 3: Expenses */}
             <div className="card">
               <div className="card-head">
                 <span className="card-title">🧾 Expenses This Month</span>
