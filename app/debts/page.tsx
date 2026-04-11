@@ -102,6 +102,26 @@ export default function DebtsPage() {
   const totalBalance = activeDebts.reduce((sum, d) => sum + Number(d.balance), 0)
   const totalMin = activeDebts.reduce((sum, d) => sum + Number(d.min_payment), 0)
 
+  const thStyle: React.CSSProperties = {
+    padding:'10px 16px',
+    fontSize:'10px',
+    fontWeight:600,
+    color:'var(--t3)',
+    textTransform:'uppercase',
+    letterSpacing:'.09em',
+    fontFamily:'DM Mono,monospace',
+    textAlign:'left',
+    background:'var(--s2)',
+    borderBottom:'1px solid var(--b)',
+  }
+
+  const tdStyle = (i: number): React.CSSProperties => ({
+    padding:'12px 16px',
+    fontSize:'13px',
+    borderBottom:'1px solid var(--b)',
+    background: i % 2 === 0 ? 'var(--s2)' : 'transparent',
+  })
+
   return (
     <div className="shell">
       <Sidebar />
@@ -112,15 +132,15 @@ export default function DebtsPage() {
         </div>
 
         <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:'14px',marginBottom:'16px'}}>
-          <div className="metric-card">
+          <div className="metric-card" style={{borderTop:'2px solid var(--red)'}}>
             <div className="metric-label">Total Balance</div>
             <div className="metric-value red">${totalBalance.toFixed(2)}</div>
           </div>
-          <div className="metric-card">
+          <div className="metric-card" style={{borderTop:'2px solid var(--amber)'}}>
             <div className="metric-label">Total Min Payment</div>
             <div className="metric-value amber">${totalMin.toFixed(2)}</div>
           </div>
-          <div className="metric-card">
+          <div className="metric-card" style={{borderTop:'2px solid var(--green)'}}>
             <div className="metric-label">Debts Paid Off</div>
             <div className="metric-value green">{paidDebts.length}</div>
           </div>
@@ -167,50 +187,55 @@ export default function DebtsPage() {
           ) : activeDebts.length === 0 ? (
             <div className="card-body"><p style={{color:'var(--t3)'}}>No active debts.</p></div>
           ) : (
-            <table style={{width:'100%',borderCollapse:'collapse'}}>
-              <thead>
-                <tr>
-                  {['Name','Balance','Min Payment','APR','Due Date','Progress',''].map(h => (
-                    <th key={h} style={{padding:'10px 16px',fontSize:'10px',fontWeight:600,color:'var(--t3)',textTransform:'uppercase',letterSpacing:'.09em',fontFamily:'DM Mono,monospace',textAlign:'left',background:'var(--s2)',borderBottom:'1px solid var(--b)'}}>{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {activeDebts.map((d, i) => {
-                  const progress = getProgress(Number(d.balance), Number(d.orig_balance))
-                  return (
-                    <tr key={d.id} style={{background: i % 2 === 0 ? 'rgba(23,27,26,1)' : 'rgba(32,38,37,1)'}}>
-                      <td style={{padding:'10px 16px',fontSize:'13px',borderBottom:'1px solid var(--b)'}}>
-                        <div style={{display:'flex',alignItems:'center',gap:'8px'}}>
-                          {d.name}
-                          {getDueBadge(d.due_date, d.paid)}
-                        </div>
-                      </td>
-                      <td style={{padding:'10px 16px',fontSize:'13px',fontFamily:'DM Mono,monospace',color:'var(--red)',borderBottom:'1px solid var(--b)'}}>${Number(d.balance).toFixed(2)}</td>
-                      <td style={{padding:'10px 16px',fontSize:'13px',fontFamily:'DM Mono,monospace',color:'var(--amber)',borderBottom:'1px solid var(--b)'}}>${Number(d.min_payment).toFixed(2)}</td>
-                      <td style={{padding:'10px 16px',fontSize:'13px',fontFamily:'DM Mono,monospace',color:'var(--amber)',borderBottom:'1px solid var(--b)'}}>{d.apr}%</td>
-                      <td style={{padding:'10px 16px',fontSize:'13px',fontFamily:'DM Mono,monospace',color:'var(--blue)',borderBottom:'1px solid var(--b)'}}>{d.due_date || '—'}</td>
-                      <td style={{padding:'10px 16px',borderBottom:'1px solid var(--b)'}}>
-                        <div style={{display:'flex',alignItems:'center',gap:'7px'}}>
-                          <div style={{flex:1,height:'6px',background:'var(--s3)',borderRadius:'999px',overflow:'hidden',maxWidth:'86px'}}>
-                            <div style={{height:'100%',borderRadius:'999px',background: progress > 66 ? 'var(--green)' : progress > 33 ? 'var(--amber)' : 'var(--red)',width:`${progress}%`,transition:'width .3s'}} />
+            <div style={{overflowX:'auto'}}>
+              <table style={{width:'100%',borderCollapse:'collapse',minWidth:'700px'}}>
+                <thead>
+                  <tr>
+                    {['Name','Balance','Min Payment','APR','Due Date','Progress',''].map(h => (
+                      <th key={h} style={thStyle}>{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {activeDebts.map((d, i) => {
+                    const progress = getProgress(Number(d.balance), Number(d.orig_balance))
+                    return (
+                      <tr key={d.id}>
+                        <td style={tdStyle(i)}>
+                          <div style={{display:'flex',alignItems:'center',gap:'8px'}}>
+                            {d.name}
+                            {getDueBadge(d.due_date, d.paid)}
                           </div>
-                          <span style={{fontSize:'11px',fontFamily:'DM Mono,monospace',color:'var(--t2)',whiteSpace:'nowrap'}}>{progress}%</span>
-                        </div>
-                      </td>
-                      <td style={{padding:'10px 16px',borderBottom:'1px solid var(--b)'}}>
-                        <div style={{display:'flex',gap:'6px',alignItems:'center'}}>
-                          <button onClick={() => markPaid(d.id, Number(d.balance))} style={{fontSize:'11px',fontFamily:'DM Mono,monospace',padding:'6px 10px',borderRadius:'999px',cursor:'pointer',border:'1px solid var(--green)',background:'transparent',color:'var(--green)',whiteSpace:'nowrap',transition:'all .14s'}}>
-                            ✓ Paid
-                          </button>
-                          <button onClick={() => deleteDebt(d.id)} className="btn-del">✕</button>
-                        </div>
-                      </td>
-                    </tr>
-                  )
-                })}
-              </tbody>
-            </table>
+                        </td>
+                        <td style={{...tdStyle(i),fontFamily:'DM Mono,monospace',color:'var(--red)'}}>${Number(d.balance).toFixed(2)}</td>
+                        <td style={{...tdStyle(i),fontFamily:'DM Mono,monospace',color:'var(--amber)'}}>${Number(d.min_payment).toFixed(2)}</td>
+                        <td style={{...tdStyle(i),fontFamily:'DM Mono,monospace',color:'var(--amber)'}}>{d.apr}%</td>
+                        <td style={{...tdStyle(i),fontFamily:'DM Mono,monospace',color:'var(--blue)'}}>{d.due_date || '—'}</td>
+                        <td style={tdStyle(i)}>
+                          <div style={{display:'flex',alignItems:'center',gap:'7px'}}>
+                            <div style={{flex:1,height:'6px',background:'var(--s3)',borderRadius:'999px',overflow:'hidden',maxWidth:'86px'}}>
+                              <div style={{height:'100%',borderRadius:'999px',background: progress > 66 ? 'var(--green)' : progress > 33 ? 'var(--amber)' : 'var(--red)',width:`${progress}%`,transition:'width .3s'}} />
+                            </div>
+                            <span style={{fontSize:'11px',fontFamily:'DM Mono,monospace',color:'var(--t2)',whiteSpace:'nowrap'}}>{progress}%</span>
+                          </div>
+                        </td>
+                        <td style={tdStyle(i)}>
+                          <div style={{display:'flex',gap:'6px',alignItems:'center'}}>
+                            <button
+                              onClick={() => markPaid(d.id, Number(d.balance))}
+                              style={{fontSize:'11px',fontFamily:'DM Mono,monospace',padding:'6px 10px',borderRadius:'999px',cursor:'pointer',border:'1px solid var(--green)',background:'transparent',color:'var(--green)',whiteSpace:'nowrap',transition:'all .14s'}}
+                            >
+                              ✓ Paid
+                            </button>
+                            <button onClick={() => deleteDebt(d.id)} className="btn-del">✕</button>
+                          </div>
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            </div>
           )}
         </div>
 
@@ -220,29 +245,34 @@ export default function DebtsPage() {
               <span className="card-title">Paid Off</span>
               <span style={{fontSize:'11px',fontFamily:'DM Mono,monospace',background:'var(--gdim)',border:'1px solid var(--green)',borderRadius:'999px',padding:'3px 10px',color:'var(--green)'}}>{paidDebts.length} paid</span>
             </div>
-            <table style={{width:'100%',borderCollapse:'collapse'}}>
-              <tbody>
-                {paidDebts.map((d, i) => (
-                  <tr key={d.id} style={{background: i % 2 === 0 ? 'rgba(23,27,26,1)' : 'rgba(32,38,37,1)',opacity:0.6}}>
-                    <td style={{padding:'10px 16px',fontSize:'13px',borderBottom:'1px solid var(--b)'}}>
-                      <div style={{display:'flex',alignItems:'center',gap:'8px'}}>
-                        {d.name}
-                        <span style={{fontSize:'10px',fontFamily:'DM Mono,monospace',padding:'2px 7px',borderRadius:'20px',background:'var(--gdim)',color:'var(--green)',border:'1px solid var(--green)'}}>PAID</span>
-                      </div>
-                    </td>
-                    <td style={{padding:'10px 16px',fontSize:'13px',fontFamily:'DM Mono,monospace',color:'var(--green)',borderBottom:'1px solid var(--b)'}}>$0.00</td>
-                    <td style={{padding:'10px 16px',borderBottom:'1px solid var(--b)'}}>
-                      <div style={{display:'flex',gap:'6px'}}>
-                        <button onClick={() => undoPaid(d.id, Number(d.undo_balance))} style={{fontSize:'11px',fontFamily:'DM Mono,monospace',padding:'6px 10px',borderRadius:'999px',cursor:'pointer',border:'1px solid var(--b2)',background:'transparent',color:'var(--t3)',whiteSpace:'nowrap',transition:'all .14s'}}>
-                          Undo
-                        </button>
-                        <button onClick={() => deleteDebt(d.id)} className="btn-del">✕</button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+            <div style={{overflowX:'auto'}}>
+              <table style={{width:'100%',borderCollapse:'collapse'}}>
+                <tbody>
+                  {paidDebts.map((d, i) => (
+                    <tr key={d.id} style={{opacity:0.6}}>
+                      <td style={{...tdStyle(i)}}>
+                        <div style={{display:'flex',alignItems:'center',gap:'8px'}}>
+                          {d.name}
+                          <span style={{fontSize:'10px',fontFamily:'DM Mono,monospace',padding:'2px 7px',borderRadius:'20px',background:'var(--gdim)',color:'var(--green)',border:'1px solid var(--green)'}}>PAID</span>
+                        </div>
+                      </td>
+                      <td style={{...tdStyle(i),fontFamily:'DM Mono,monospace',color:'var(--green)'}}>$0.00</td>
+                      <td style={tdStyle(i)}>
+                        <div style={{display:'flex',gap:'6px'}}>
+                          <button
+                            onClick={() => undoPaid(d.id, Number(d.undo_balance))}
+                            style={{fontSize:'11px',fontFamily:'DM Mono,monospace',padding:'6px 10px',borderRadius:'999px',cursor:'pointer',border:'1px solid var(--b2)',background:'transparent',color:'var(--t3)',whiteSpace:'nowrap',transition:'all .14s'}}
+                          >
+                            Undo
+                          </button>
+                          <button onClick={() => deleteDebt(d.id)} className="btn-del">✕</button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </div>
         )}
       </main>
