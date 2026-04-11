@@ -13,9 +13,7 @@ function DateInput({ value, onChange }: { value: string, onChange: (v: string) =
     else if (v.length >= 3) v = v.slice(0, 2) + '/' + v.slice(2)
     onChange(v)
   }
-  return (
-    <input className="fi" type="text" placeholder="MM/DD/YYYY" value={value} onChange={handleChange} maxLength={10} />
-  )
+  return <input className="fi" type="text" placeholder="MM/DD/YYYY" value={value} onChange={handleChange} maxLength={10} />
 }
 
 function EditableCell({ value, onChange, type = 'text', color }: { value: string, onChange: (v: string) => void, type?: string, color?: string }) {
@@ -50,6 +48,20 @@ function EditableCell({ value, onChange, type = 'text', color }: { value: string
       {value}
     </span>
   )
+}
+
+function advanceDueDate(dueDate: string): string {
+  if (!dueDate) return ''
+  const parts = dueDate.split('/')
+  if (parts.length !== 3) return dueDate
+  let month = parseInt(parts[0])
+  let day = parseInt(parts[1])
+  let year = parseInt(parts[2])
+  month += 1
+  if (month > 12) { month = 1; year += 1 }
+  const mm = String(month).padStart(2, '0')
+  const dd = String(day).padStart(2, '0')
+  return `${mm}/${dd}/${year}`
 }
 
 export default function DebtsPage() {
@@ -98,23 +110,40 @@ export default function DebtsPage() {
     loadDebts()
   }
 
+  async function makePayment(debt: any) {
+    const currentBalance = Number(debt.balance)
+    const minPmt = Number(debt.min_payment)
+    const newBalance = Math.max(0, currentBalance - minPmt)
+    const newDueDate = advanceDueDate(debt.due_date)
+    const isPaidOff = newBalance === 0
+
+    await supabase.from('debts').update({
+      balance: newBalance,
+      due_date: newDueDate,
+      paid: isPaidOff,
+      undo_balance: currentBalance,
+      undo_due_date: debt.due_date,
+    }).eq('id', debt.id)
+
+    loadDebts()
+  }
+
+  async function undoPayment(debt: any) {
+    await supabase.from('debts').update({
+      balance: debt.undo_balance,
+      due_date: debt.undo_due_date || debt.due_date,
+      paid: false,
+    }).eq('id', debt.id)
+    loadDebts()
+  }
+
   async function deleteDebt(id: number) {
     await supabase.from('debts').delete().eq('id', id)
     loadDebts()
   }
 
-  async function markPaid(id: number, currentBalance: number) {
-    await supabase.from('debts').update({ paid: true, undo_balance: currentBalance, balance: 0 }).eq('id', id)
-    loadDebts()
-  }
-
-  async function undoPaid(id: number, undoBalance: number) {
-    await supabase.from('debts').update({ paid: false, balance: undoBalance }).eq('id', id)
-    loadDebts()
-  }
-
   function getDueBadge(dueDate: string, paid: boolean) {
-    if (paid) return <span style={{fontSize:'10px',fontFamily:'DM Mono,monospace',padding:'2px 7px',borderRadius:'20px',background:'var(--gdim)',color:'var(--green)',border:'1px solid var(--green)'}}>PAID</span>
+    if (paid) return <span style={{fontSize:'10px',fontFamily:'DM Mono,monospace',padding:'2px 7px',borderRadius:'20px',background:'var(--gdim)',color:'var(--green)',border:'1px solid var(--green)'}}>PAID OFF</span>
     if (!dueDate) return null
     const parts = dueDate.split('/')
     if (parts.length !== 3) return null
@@ -163,7 +192,9 @@ export default function DebtsPage() {
       <main className="main">
         <div className="page-header">
           <div className="page-title">My Debts</div>
-          <div style={{fontSize:'13px',color:'var(--t3)',marginTop:'8px'}}>Click any value to edit it inline</div>
+          <div style={{fontSize:'13px',color:'var(--t3)',marginTop:'8px'}}>
+            Click any value to edit · ✓ Pay subtracts min payment and advances due date
+          </div>
         </div>
 
         <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:'14px',marginBottom:'16px'}}>
@@ -238,43 +269,21 @@ export default function DebtsPage() {
                       <tr key={d.id}>
                         <td style={tdStyle(i)}>
                           <div style={{display:'flex',alignItems:'center',gap:'8px',flexWrap:'wrap'}}>
-                            <EditableCell
-                              value={d.name}
-                              onChange={v => updateDebt(d.id, 'name', v)}
-                            />
+                            <EditableCell value={d.name} onChange={v => updateDebt(d.id, 'name', v)} />
                             {getDueBadge(d.due_date, d.paid)}
                           </div>
                         </td>
                         <td style={tdStyle(i)}>
-                          <EditableCell
-                            value={Number(d.balance).toFixed(2)}
-                            onChange={v => updateDebt(d.id, 'balance', v)}
-                            type="number"
-                            color="var(--red)"
-                          />
+                          <EditableCell value={Number(d.balance).toFixed(2)} onChange={v => updateDebt(d.id, 'balance', v)} type="number" color="var(--red)" />
                         </td>
                         <td style={tdStyle(i)}>
-                          <EditableCell
-                            value={Number(d.min_payment).toFixed(2)}
-                            onChange={v => updateDebt(d.id, 'min_payment', v)}
-                            type="number"
-                            color="var(--amber)"
-                          />
+                          <EditableCell value={Number(d.min_payment).toFixed(2)} onChange={v => updateDebt(d.id, 'min_payment', v)} type="number" color="var(--amber)" />
                         </td>
                         <td style={tdStyle(i)}>
-                          <EditableCell
-                            value={String(d.apr)}
-                            onChange={v => updateDebt(d.id, 'apr', v)}
-                            type="number"
-                            color="var(--amber)"
-                          />
+                          <EditableCell value={String(d.apr)} onChange={v => updateDebt(d.id, 'apr', v)} type="number" color="var(--amber)" />
                         </td>
                         <td style={tdStyle(i)}>
-                          <EditableCell
-                            value={d.due_date || ''}
-                            onChange={v => updateDebt(d.id, 'due_date', v)}
-                            color="var(--blue)"
-                          />
+                          <EditableCell value={d.due_date || ''} onChange={v => updateDebt(d.id, 'due_date', v)} color="var(--blue)" />
                         </td>
                         <td style={tdStyle(i)}>
                           <div style={{display:'flex',alignItems:'center',gap:'7px'}}>
@@ -287,11 +296,21 @@ export default function DebtsPage() {
                         <td style={tdStyle(i)}>
                           <div style={{display:'flex',gap:'6px',alignItems:'center'}}>
                             <button
-                              onClick={() => markPaid(d.id, Number(d.balance))}
+                              onClick={() => makePayment(d)}
                               style={{fontSize:'11px',fontFamily:'DM Mono,monospace',padding:'6px 10px',borderRadius:'999px',cursor:'pointer',border:'1px solid var(--green)',background:'transparent',color:'var(--green)',whiteSpace:'nowrap',transition:'all .14s'}}
+                              title={`Pay $${Number(d.min_payment).toFixed(2)} · advances due date`}
                             >
-                              ✓ Paid
+                              ✓ Pay
                             </button>
+                            {d.undo_balance != null && (
+                              <button
+                                onClick={() => undoPayment(d)}
+                                style={{fontSize:'11px',fontFamily:'DM Mono,monospace',padding:'6px 10px',borderRadius:'999px',cursor:'pointer',border:'1px solid var(--b2)',background:'transparent',color:'var(--t3)',whiteSpace:'nowrap',transition:'all .14s'}}
+                                title="Undo last payment"
+                              >
+                                Undo
+                              </button>
+                            )}
                             <button onClick={() => deleteDebt(d.id)} className="btn-del">✕</button>
                           </div>
                         </td>
@@ -307,7 +326,7 @@ export default function DebtsPage() {
         {paidDebts.length > 0 && (
           <div className="card">
             <div className="card-head">
-              <span className="card-title">Paid Off</span>
+              <span className="card-title">🎉 Paid Off</span>
               <span style={{fontSize:'11px',fontFamily:'DM Mono,monospace',background:'var(--gdim)',border:'1px solid var(--green)',borderRadius:'999px',padding:'3px 10px',color:'var(--green)'}}>{paidDebts.length} paid</span>
             </div>
             <div style={{overflowX:'auto'}}>
@@ -318,14 +337,14 @@ export default function DebtsPage() {
                       <td style={tdStyle(i)}>
                         <div style={{display:'flex',alignItems:'center',gap:'8px'}}>
                           {d.name}
-                          <span style={{fontSize:'10px',fontFamily:'DM Mono,monospace',padding:'2px 7px',borderRadius:'20px',background:'var(--gdim)',color:'var(--green)',border:'1px solid var(--green)'}}>PAID</span>
+                          <span style={{fontSize:'10px',fontFamily:'DM Mono,monospace',padding:'2px 7px',borderRadius:'20px',background:'var(--gdim)',color:'var(--green)',border:'1px solid var(--green)'}}>PAID OFF</span>
                         </div>
                       </td>
                       <td style={{...tdStyle(i),fontFamily:'DM Mono,monospace',color:'var(--green)'}}>$0.00</td>
                       <td style={tdStyle(i)}>
                         <div style={{display:'flex',gap:'6px'}}>
                           <button
-                            onClick={() => undoPaid(d.id, Number(d.undo_balance))}
+                            onClick={() => undoPayment(d)}
                             style={{fontSize:'11px',fontFamily:'DM Mono,monospace',padding:'6px 10px',borderRadius:'999px',cursor:'pointer',border:'1px solid var(--b2)',background:'transparent',color:'var(--t3)',whiteSpace:'nowrap',transition:'all .14s'}}
                           >
                             Undo
