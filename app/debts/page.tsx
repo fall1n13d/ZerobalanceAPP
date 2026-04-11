@@ -14,14 +14,41 @@ function DateInput({ value, onChange }: { value: string, onChange: (v: string) =
     onChange(v)
   }
   return (
-    <input
-      className="fi"
-      type="text"
-      placeholder="MM/DD/YYYY"
-      value={value}
-      onChange={handleChange}
-      maxLength={10}
-    />
+    <input className="fi" type="text" placeholder="MM/DD/YYYY" value={value} onChange={handleChange} maxLength={10} />
+  )
+}
+
+function EditableCell({ value, onChange, type = 'text', color }: { value: string, onChange: (v: string) => void, type?: string, color?: string }) {
+  const [editing, setEditing] = useState(false)
+  const [val, setVal] = useState(value)
+
+  function handleBlur() {
+    setEditing(false)
+    onChange(val)
+  }
+
+  if (editing) {
+    return (
+      <input
+        autoFocus
+        type={type}
+        value={val}
+        onChange={e => setVal(e.target.value)}
+        onBlur={handleBlur}
+        onKeyDown={e => e.key === 'Enter' && handleBlur()}
+        style={{background:'var(--s2)',border:'1px solid var(--green)',borderRadius:'9px',color:'var(--text)',fontFamily:'DM Mono,monospace',fontSize:'13px',padding:'5px 8px',width:'100%',outline:'none',boxShadow:'0 0 0 2px var(--gdim)'}}
+      />
+    )
+  }
+
+  return (
+    <span
+      onClick={() => { setVal(value); setEditing(true) }}
+      title="Click to edit"
+      style={{cursor:'text',color: color || 'var(--text)',fontFamily:'DM Mono,monospace',fontSize:'13px',borderBottom:'1px dashed var(--b2)',paddingBottom:'1px'}}
+    >
+      {value}
+    </span>
   )
 }
 
@@ -60,6 +87,14 @@ export default function DebtsPage() {
       paid: false,
     })
     setName(''); setBalance(''); setMinPayment(''); setApr(''); setDueDate('')
+    loadDebts()
+  }
+
+  async function updateDebt(id: number, field: string, value: string) {
+    const numericFields = ['balance', 'min_payment', 'apr']
+    const update: any = {}
+    update[field] = numericFields.includes(field) ? parseFloat(value) || 0 : value
+    await supabase.from('debts').update(update).eq('id', id)
     loadDebts()
   }
 
@@ -128,7 +163,7 @@ export default function DebtsPage() {
       <main className="main">
         <div className="page-header">
           <div className="page-title">My Debts</div>
-          <div style={{fontSize:'13px',color:'var(--t3)',marginTop:'8px'}}>Track and manage all your debts</div>
+          <div style={{fontSize:'13px',color:'var(--t3)',marginTop:'8px'}}>Click any value to edit it inline</div>
         </div>
 
         <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:'14px',marginBottom:'16px'}}>
@@ -191,7 +226,7 @@ export default function DebtsPage() {
               <table style={{width:'100%',borderCollapse:'collapse',minWidth:'700px'}}>
                 <thead>
                   <tr>
-                    {['Name','Balance','Min Payment','APR','Due Date','Progress',''].map(h => (
+                    {['Name','Balance','Min Payment','APR %','Due Date','Progress',''].map(h => (
                       <th key={h} style={thStyle}>{h}</th>
                     ))}
                   </tr>
@@ -202,15 +237,45 @@ export default function DebtsPage() {
                     return (
                       <tr key={d.id}>
                         <td style={tdStyle(i)}>
-                          <div style={{display:'flex',alignItems:'center',gap:'8px'}}>
-                            {d.name}
+                          <div style={{display:'flex',alignItems:'center',gap:'8px',flexWrap:'wrap'}}>
+                            <EditableCell
+                              value={d.name}
+                              onChange={v => updateDebt(d.id, 'name', v)}
+                            />
                             {getDueBadge(d.due_date, d.paid)}
                           </div>
                         </td>
-                        <td style={{...tdStyle(i),fontFamily:'DM Mono,monospace',color:'var(--red)'}}>${Number(d.balance).toFixed(2)}</td>
-                        <td style={{...tdStyle(i),fontFamily:'DM Mono,monospace',color:'var(--amber)'}}>${Number(d.min_payment).toFixed(2)}</td>
-                        <td style={{...tdStyle(i),fontFamily:'DM Mono,monospace',color:'var(--amber)'}}>{d.apr}%</td>
-                        <td style={{...tdStyle(i),fontFamily:'DM Mono,monospace',color:'var(--blue)'}}>{d.due_date || '—'}</td>
+                        <td style={tdStyle(i)}>
+                          <EditableCell
+                            value={Number(d.balance).toFixed(2)}
+                            onChange={v => updateDebt(d.id, 'balance', v)}
+                            type="number"
+                            color="var(--red)"
+                          />
+                        </td>
+                        <td style={tdStyle(i)}>
+                          <EditableCell
+                            value={Number(d.min_payment).toFixed(2)}
+                            onChange={v => updateDebt(d.id, 'min_payment', v)}
+                            type="number"
+                            color="var(--amber)"
+                          />
+                        </td>
+                        <td style={tdStyle(i)}>
+                          <EditableCell
+                            value={String(d.apr)}
+                            onChange={v => updateDebt(d.id, 'apr', v)}
+                            type="number"
+                            color="var(--amber)"
+                          />
+                        </td>
+                        <td style={tdStyle(i)}>
+                          <EditableCell
+                            value={d.due_date || ''}
+                            onChange={v => updateDebt(d.id, 'due_date', v)}
+                            color="var(--blue)"
+                          />
+                        </td>
                         <td style={tdStyle(i)}>
                           <div style={{display:'flex',alignItems:'center',gap:'7px'}}>
                             <div style={{flex:1,height:'6px',background:'var(--s3)',borderRadius:'999px',overflow:'hidden',maxWidth:'86px'}}>
@@ -250,7 +315,7 @@ export default function DebtsPage() {
                 <tbody>
                   {paidDebts.map((d, i) => (
                     <tr key={d.id} style={{opacity:0.6}}>
-                      <td style={{...tdStyle(i)}}>
+                      <td style={tdStyle(i)}>
                         <div style={{display:'flex',alignItems:'center',gap:'8px'}}>
                           {d.name}
                           <span style={{fontSize:'10px',fontFamily:'DM Mono,monospace',padding:'2px 7px',borderRadius:'20px',background:'var(--gdim)',color:'var(--green)',border:'1px solid var(--green)'}}>PAID</span>
