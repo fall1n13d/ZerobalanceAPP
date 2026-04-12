@@ -20,6 +20,7 @@ export default function Sidebar() {
     leftover: 0,
   })
   const [upcoming, setUpcoming] = useState<any[]>([])
+  const [pastDue, setPastDue] = useState<any[]>([])
 
   useEffect(() => {
     const saved = localStorage.getItem('zb-theme') || 'dark'
@@ -27,6 +28,14 @@ export default function Sidebar() {
     document.documentElement.setAttribute('data-theme', saved)
     loadMetrics()
   }, [pathname])
+
+  function parseDueDate(dueDate: string): Date | null {
+    if (!dueDate) return null
+    const parts = dueDate.split('/')
+    if (parts.length !== 3) return null
+    const d = new Date(parseInt(parts[2]), parseInt(parts[0]) - 1, parseInt(parts[1]))
+    return isNaN(d.getTime()) ? null : d
+  }
 
   async function loadMetrics() {
     const [
@@ -63,22 +72,32 @@ export default function Sidebar() {
 
     setMetrics({ totalDebt, minPayments, monthlyBills, monthlyExpenses, monthlyIncome, leftover })
 
-    // Upcoming payments — debts with due dates in next 14 days
-    const upcomingDebts = activeDebts.filter(d => {
-      if (!d.due_date) return false
-      const parts = d.due_date.split('/')
-      if (parts.length !== 3) return false
-      const due = new Date(parseInt(parts[2]), parseInt(parts[0]) - 1, parseInt(parts[1]))
-      const diff = Math.ceil((due.getTime() - now.getTime()) / (1000 * 60 * 60 * 24))
-      return diff >= -1 && diff <= 14
-    }).map(d => {
-      const parts = d.due_date.split('/')
-      const due = new Date(parseInt(parts[2]), parseInt(parts[0]) - 1, parseInt(parts[1]))
-      const diff = Math.ceil((due.getTime() - now.getTime()) / (1000 * 60 * 60 * 24))
-      return { ...d, daysUntil: diff }
-    }).sort((a, b) => a.daysUntil - b.daysUntil)
+    // Split into upcoming and past due
+    const today = new Date()
+    today.setHours(0,0,0,0)
 
-    setUpcoming(upcomingDebts)
+    const upcomingList: any[] = []
+    const pastDueList: any[] = []
+
+    activeDebts.forEach(d => {
+      if (!d.due_date) return
+      const due = parseDueDate(d.due_date)
+      if (!due) return
+      due.setHours(0,0,0,0)
+      const diff = Math.ceil((due.getTime() - today.getTime()) / (1000 * 60 * 60 * 24))
+
+      if (diff < 0) {
+        pastDueList.push({ ...d, daysOverdue: Math.abs(diff) })
+      } else if (diff <= 14) {
+        upcomingList.push({ ...d, daysUntil: diff })
+      }
+    })
+
+    upcomingList.sort((a, b) => a.daysUntil - b.daysUntil)
+    pastDueList.sort((a, b) => b.daysOverdue - a.daysOverdue)
+
+    setUpcoming(upcomingList)
+    setPastDue(pastDueList)
   }
 
   function toggleTheme() {
@@ -157,7 +176,7 @@ export default function Sidebar() {
           {sm('Monthly Bills', `$${metrics.monthlyBills.toFixed(2)}`, 'var(--amber)')}
           {sm('Monthly Expenses', `$${metrics.monthlyExpenses.toFixed(2)}`, 'var(--purple)')}
           {sm('Debt Payments', `$${metrics.minPayments.toFixed(2)}`, 'var(--red)')}
-          <div style={{background: metrics.leftover >= 0 ? 'var(--gdim)' : 'var(--rdim)', border:`1px solid ${metrics.leftover >= 0 ? 'var(--green)' : 'var(--red)'}`,borderRadius:'14px',padding:'10px 12px',marginBottom:'8px'}}>
+          <div style={{background: metrics.leftover >= 0 ? 'var(--gdim)' : 'var(--rdim)',border:`1px solid ${metrics.leftover >= 0 ? 'var(--green)' : 'var(--red)'}`,borderRadius:'14px',padding:'10px 12px',marginBottom:'8px'}}>
             <div style={{fontSize:'10px',color:'var(--t3)',textTransform:'uppercase',letterSpacing:'.07em',fontFamily:'DM Mono,monospace',marginBottom:'2px'}}>Leftover</div>
             <div style={{fontFamily:'DM Mono,monospace',fontSize:'14px',fontWeight:500,color: metrics.leftover >= 0 ? 'var(--green)' : 'var(--red)'}}>
               ${metrics.leftover.toFixed(2)}
@@ -165,16 +184,38 @@ export default function Sidebar() {
           </div>
         </div>
 
+        {/* Past Due Payments */}
+        {pastDue.length > 0 && (
+          <div style={{padding:'14px 18px',borderBottom:'1px solid var(--b)',background:'var(--rdim)'}}>
+            <div style={{fontSize:'10px',color:'var(--red)',textTransform:'uppercase',letterSpacing:'.08em',fontFamily:'DM Mono,monospace',marginBottom:'10px',fontWeight:600}}>
+              🚨 Past Due ({pastDue.length})
+            </div>
+            {pastDue.map((d, i) => (
+              <div key={i} style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'8px',padding:'8px 10px',background:'rgba(255,91,91,0.08)',border:'1px solid rgba(255,91,91,0.3)',borderRadius:'10px'}}>
+                <div>
+                  <div style={{fontSize:'12px',color:'var(--text)',fontWeight:500}}>{d.name}</div>
+                  <div style={{fontSize:'10px',fontFamily:'DM Mono,monospace',color:'var(--red)'}}>
+                    {d.daysOverdue}d overdue · {d.due_date}
+                  </div>
+                </div>
+                <span style={{fontFamily:'DM Mono,monospace',fontSize:'12px',color:'var(--red)',fontWeight:600}}>${Number(d.min_payment).toFixed(0)}</span>
+              </div>
+            ))}
+          </div>
+        )}
+
         {/* Upcoming Payments */}
         {upcoming.length > 0 && (
           <div style={{padding:'14px 18px',borderBottom:'1px solid var(--b)'}}>
-            <div style={{fontSize:'10px',color:'var(--t3)',textTransform:'uppercase',letterSpacing:'.08em',fontFamily:'DM Mono,monospace',marginBottom:'10px'}}>⚠️ Upcoming Payments</div>
+            <div style={{fontSize:'10px',color:'var(--amber)',textTransform:'uppercase',letterSpacing:'.08em',fontFamily:'DM Mono,monospace',marginBottom:'10px',fontWeight:600}}>
+              ⏰ Upcoming ({upcoming.length})
+            </div>
             {upcoming.map((d, i) => (
               <div key={i} style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'8px'}}>
                 <div>
                   <div style={{fontSize:'12px',color:'var(--t2)'}}>{d.name}</div>
-                  <div style={{fontSize:'10px',fontFamily:'DM Mono,monospace',color: d.daysUntil < 0 ? 'var(--red)' : d.daysUntil <= 3 ? 'var(--red)' : 'var(--amber)'}}>
-                    {d.daysUntil < 0 ? `${Math.abs(d.daysUntil)}d overdue` : d.daysUntil === 0 ? 'Due today' : `Due in ${d.daysUntil}d`}
+                  <div style={{fontSize:'10px',fontFamily:'DM Mono,monospace',color: d.daysUntil <= 3 ? 'var(--red)' : 'var(--amber)'}}>
+                    {d.daysUntil === 0 ? 'Due today' : `Due in ${d.daysUntil}d`}
                   </div>
                 </div>
                 <span style={{fontFamily:'DM Mono,monospace',fontSize:'12px',color:'var(--amber)'}}>${Number(d.min_payment).toFixed(0)}</span>
