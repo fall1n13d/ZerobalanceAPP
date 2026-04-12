@@ -4,19 +4,11 @@ import { useState, useEffect } from 'react'
 import { createClient } from '@/utils/supabase/client'
 import { useRouter } from 'next/navigation'
 import Sidebar from '@/components/Sidebar'
+import DateInput from '@/components/DateInput'
 
-function DateInput({ value, onChange }: { value: string, onChange: (v: string) => void }) {
-  function handleChange(e: React.ChangeEvent<HTMLInputElement>) {
-    let v = e.target.value.replace(/\D/g, '')
-    if (v.length > 8) v = v.slice(0, 8)
-    if (v.length >= 5) v = v.slice(0, 2) + '/' + v.slice(2, 4) + '/' + v.slice(4)
-    else if (v.length >= 3) v = v.slice(0, 2) + '/' + v.slice(2)
-    onChange(v)
-  }
-  return <input className="fi" type="text" placeholder="MM/DD/YYYY" value={value} onChange={handleChange} maxLength={10} />
-}
-
-function EditableCell({ value, onChange, type = 'text', color }: { value: string, onChange: (v: string) => void, type?: string, color?: string }) {
+function EditableCell({ value, onChange, type = 'text', color, isDate = false }: {
+  value: string, onChange: (v: string) => void, type?: string, color?: string, isDate?: boolean
+}) {
   const [editing, setEditing] = useState(false)
   const [val, setVal] = useState(value)
 
@@ -26,6 +18,17 @@ function EditableCell({ value, onChange, type = 'text', color }: { value: string
   }
 
   if (editing) {
+    if (isDate) {
+      return (
+        <DateInput
+          value={val}
+          onChange={v => setVal(v)}
+          className=""
+          style={{background:'var(--s2)',border:'1px solid var(--green)',borderRadius:'9px',color:'var(--text)',fontFamily:'DM Mono,monospace',fontSize:'13px',padding:'5px 8px',width:'130px',outline:'none',boxShadow:'0 0 0 2px var(--gdim)'}}
+          onBlur={handleBlur}
+        />
+      )
+    }
     return (
       <input
         autoFocus
@@ -66,7 +69,8 @@ function parseDueDate(dueDate: string): Date | null {
   if (!dueDate) return null
   const parts = dueDate.split('/')
   if (parts.length !== 3) return null
-  return new Date(parseInt(parts[2]), parseInt(parts[0]) - 1, parseInt(parts[1]))
+  const d = new Date(parseInt(parts[2]), parseInt(parts[0]) - 1, parseInt(parts[1]))
+  return isNaN(d.getTime()) ? null : d
 }
 
 function calcDueInfo(balance: number, apr: number, dueDate: string) {
@@ -83,29 +87,21 @@ function calcDueInfo(balance: number, apr: number, dueDate: string) {
   return { days, interest, totalDue }
 }
 
-// Accrue interest if due date has passed — runs on page load
 async function accrueOverdueInterest(debts: any[], supabase: any) {
   const today = new Date()
   today.setHours(0,0,0,0)
-
   for (const debt of debts) {
     if (debt.paid || !debt.due_date) continue
     const due = parseDueDate(debt.due_date)
     if (!due) continue
     due.setHours(0,0,0,0)
-
-    // If due date has passed, accrue interest and advance due date
     if (today > due) {
       const daysOverdue = Math.ceil((today.getTime() - due.getTime()) / (1000 * 60 * 60 * 24))
       const dailyRate = Number(debt.apr) / 100 / 365
       const interest = Math.round(Number(debt.balance) * dailyRate * daysOverdue * 100) / 100
       const newBalance = Math.round((Number(debt.balance) + interest) * 100) / 100
       const newDueDate = advanceDueDate(debt.due_date)
-
-      await supabase.from('debts').update({
-        balance: newBalance,
-        due_date: newDueDate,
-      }).eq('id', debt.id)
+      await supabase.from('debts').update({ balance: newBalance, due_date: newDueDate }).eq('id', debt.id)
     }
   }
 }
@@ -121,14 +117,15 @@ export default function DebtsPage() {
   const [dueDate, setDueDate] = useState('')
   const [loading, setLoading] = useState(true)
   const [accruing, setAccruing] = useState(false)
+  const [pastPayment, setPastPayment] = useState<{debtId: number, name: string} | null>(null)
+  const [pastDate, setPastDate] = useState('')
+  const [pastAmount, setPastAmount] = useState('')
 
   useEffect(() => { loadDebts() }, [])
 
   async function loadDebts() {
     const { data } = await supabase.from('debts').select('*').order('created_at', { ascending: true })
     if (!data) { setLoading(false); return }
-
-    // Check if any debts have overdue dates and accrue interest
     const overdue = data.filter(d => {
       if (d.paid || !d.due_date) return false
       const due = parseDueDate(d.due_date)
@@ -138,18 +135,15 @@ export default function DebtsPage() {
       due.setHours(0,0,0,0)
       return today > due
     })
-
     if (overdue.length > 0) {
       setAccruing(true)
       await accrueOverdueInterest(overdue, supabase)
       setAccruing(false)
-      // Reload after accruing
       const { data: refreshed } = await supabase.from('debts').select('*').order('created_at', { ascending: true })
       setDebts(refreshed || [])
     } else {
       setDebts(data)
     }
-
     setLoading(false)
   }
 
@@ -159,14 +153,9 @@ export default function DebtsPage() {
     if (!user) return router.push('/login')
     const bal = parseFloat(balance)
     await supabase.from('debts').insert({
-      user_id: user.id,
-      name,
-      balance: bal,
-      orig_balance: bal,
-      min_payment: parseFloat(minPayment),
-      apr: parseFloat(apr),
-      due_date: dueDate,
-      paid: false,
+      user_id: user.id, name, balance: bal, orig_balance: bal,
+      min_payment: parseFloat(minPayment), apr: parseFloat(apr),
+      due_date: dueDate, paid: false,
     })
     setName(''); setBalance(''); setMinPayment(''); setApr(''); setDueDate('')
     loadDebts()
@@ -185,36 +174,57 @@ export default function DebtsPage() {
     const apr = Number(debt.apr)
     const minPmt = Number(debt.min_payment)
     const currentDueDate = debt.due_date || ''
-
     const dueInfo = calcDueInfo(currentBalance, apr, currentDueDate)
     const balanceWithInterest = dueInfo ? dueInfo.totalDue : currentBalance
     const newBalance = Math.max(0, Math.round((balanceWithInterest - minPmt) * 100) / 100)
     const newDueDate = advanceDueDate(currentDueDate)
     const isPaidOff = newBalance === 0
-
     const { error } = await supabase.from('debts').update({
-      balance: newBalance,
-      due_date: newDueDate,
-      paid: isPaidOff,
-      undo_balance: currentBalance,
-      undo_due_date: currentDueDate,
+      balance: newBalance, due_date: newDueDate, paid: isPaidOff,
+      undo_balance: currentBalance, undo_due_date: currentDueDate,
     }).eq('id', debt.id)
-
     if (error) { alert('Payment failed: ' + error.message); return }
+    loadDebts()
+  }
+
+  async function logPastPayment() {
+    if (!pastPayment || !pastDate || !pastAmount) return
+    const debt = debts.find(d => d.id === pastPayment.debtId)
+    if (!debt) return
+    const paymentAmount = parseFloat(pastAmount)
+    const currentBalance = Number(debt.balance)
+    const apr = Number(debt.apr)
+    const parts = pastDate.split('/')
+    if (parts.length !== 3) { alert('Invalid date format'); return }
+    const payDate = new Date(parseInt(parts[2]), parseInt(parts[0]) - 1, parseInt(parts[1]))
+    const dueParts = debt.due_date?.split('/')
+    let daysUntilDue = 30
+    if (dueParts?.length === 3) {
+      const dueD = new Date(parseInt(dueParts[2]), parseInt(dueParts[0]) - 1, parseInt(dueParts[1]))
+      daysUntilDue = Math.max(0, Math.ceil((dueD.getTime() - payDate.getTime()) / (1000 * 60 * 60 * 24)))
+    }
+    const interest = Math.round(currentBalance * (apr / 100 / 365) * daysUntilDue * 100) / 100
+    const balanceWithInterest = Math.round((currentBalance + interest) * 100) / 100
+    const newBalance = Math.max(0, Math.round((balanceWithInterest - paymentAmount) * 100) / 100)
+    const newDueDate = advanceDueDate(debt.due_date)
+    const isPaidOff = newBalance === 0
+    await supabase.from('debts').update({
+      balance: newBalance, due_date: newDueDate, paid: isPaidOff,
+      undo_balance: currentBalance, undo_due_date: debt.due_date,
+    }).eq('id', debt.id)
+    setPastPayment(null)
+    setPastDate('')
+    setPastAmount('')
     loadDebts()
   }
 
   async function undoPayment(debt: any) {
     if (debt.undo_balance == null) { alert('No previous payment to undo.'); return }
-
     const { error } = await supabase.from('debts').update({
       balance: Number(debt.undo_balance),
       due_date: debt.undo_due_date || debt.due_date,
-      paid: false,
-      undo_balance: null,
-      undo_due_date: null,
+      paid: false, undo_balance: null, undo_due_date: null,
     }).eq('id', debt.id)
-
     if (error) { alert('Undo failed: ' + error.message); return }
     loadDebts()
   }
@@ -238,8 +248,7 @@ export default function DebtsPage() {
 
   function getProgress(balance: number, origBalance: number) {
     if (!origBalance || origBalance <= 0) return 0
-    const paid = Math.max(0, origBalance - balance)
-    return Math.min(100, Math.round((paid / origBalance) * 100))
+    return Math.min(100, Math.round((Math.max(0, origBalance - balance) / origBalance) * 100))
   }
 
   const activeDebts = debts.filter(d => !d.paid)
@@ -248,22 +257,13 @@ export default function DebtsPage() {
   const totalMin = activeDebts.reduce((sum, d) => sum + Number(d.min_payment), 0)
 
   const thStyle: React.CSSProperties = {
-    padding:'10px 16px',
-    fontSize:'10px',
-    fontWeight:600,
-    color:'var(--t3)',
-    textTransform:'uppercase',
-    letterSpacing:'.09em',
-    fontFamily:'DM Mono,monospace',
-    textAlign:'left',
-    background:'var(--s2)',
-    borderBottom:'1px solid var(--b)',
+    padding:'10px 16px', fontSize:'10px', fontWeight:600, color:'var(--t3)',
+    textTransform:'uppercase', letterSpacing:'.09em', fontFamily:'DM Mono,monospace',
+    textAlign:'left', background:'var(--s2)', borderBottom:'1px solid var(--b)',
   }
 
   const tdStyle = (i: number): React.CSSProperties => ({
-    padding:'12px 16px',
-    fontSize:'13px',
-    borderBottom:'1px solid var(--b)',
+    padding:'12px 16px', fontSize:'13px', borderBottom:'1px solid var(--b)',
     background: i % 2 === 0 ? 'var(--s2)' : 'transparent',
   })
 
@@ -271,6 +271,31 @@ export default function DebtsPage() {
     <div className="shell">
       <Sidebar />
       <main className="main">
+
+        {/* Past Payment Modal */}
+        {pastPayment && (
+          <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.6)',display:'flex',alignItems:'center',justifyContent:'center',zIndex:500}}>
+            <div style={{background:'var(--surface)',border:'1px solid var(--b2)',borderRadius:'24px',padding:'32px',width:'min(420px,90%)',boxShadow:'var(--shadow)'}}>
+              <h2 style={{fontFamily:'Syne,sans-serif',fontWeight:700,fontSize:'20px',marginBottom:'6px'}}>Log Past Payment</h2>
+              <p style={{fontSize:'13px',color:'var(--t3)',marginBottom:'24px'}}>{pastPayment.name}</p>
+              <div style={{display:'flex',flexDirection:'column',gap:'14px'}}>
+                <div>
+                  <div style={{fontSize:'10px',color:'var(--t3)',fontFamily:'DM Mono,monospace',textTransform:'uppercase',letterSpacing:'.06em',marginBottom:'4px'}}>Payment Date</div>
+                  <DateInput value={pastDate} onChange={setPastDate} />
+                </div>
+                <div>
+                  <div style={{fontSize:'10px',color:'var(--t3)',fontFamily:'DM Mono,monospace',textTransform:'uppercase',letterSpacing:'.06em',marginBottom:'4px'}}>Payment Amount</div>
+                  <input className="fi" type="number" placeholder="0.00" value={pastAmount} onChange={e => setPastAmount(e.target.value)} />
+                </div>
+                <div style={{display:'flex',gap:'10px',marginTop:'8px'}}>
+                  <button onClick={logPastPayment} className="btn-add" style={{flex:1,padding:'12px'}}>Log Payment</button>
+                  <button onClick={() => { setPastPayment(null); setPastDate(''); setPastAmount('') }} style={{flex:1,padding:'12px',background:'transparent',border:'1px solid var(--b2)',borderRadius:'12px',color:'var(--t3)',cursor:'pointer',fontFamily:'DM Mono,monospace',fontSize:'13px'}}>Cancel</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
         <div className="page-header">
           <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
             <div className="page-title">My Debts</div>
@@ -281,7 +306,7 @@ export default function DebtsPage() {
             )}
           </div>
           <div style={{fontSize:'13px',color:'var(--t3)',marginTop:'8px'}}>
-            Click any value to edit · Interest accrues automatically when due date passes
+            Click any value to edit · ✓ Pay adds interest then subtracts min payment · Interest accrues automatically
           </div>
         </div>
 
@@ -301,26 +326,24 @@ export default function DebtsPage() {
         </div>
 
         <div className="card">
-          <div className="card-head">
-            <span className="card-title">Add Debt</span>
-          </div>
+          <div className="card-head"><span className="card-title">Add Debt</span></div>
           <div className="card-body">
             <form onSubmit={addDebt} style={{display:'grid',gridTemplateColumns:'2fr 1fr 1fr 1fr 1fr auto',gap:'10px',alignItems:'end'}}>
               <div>
                 <div style={{fontSize:'10px',color:'var(--t3)',fontFamily:'DM Mono,monospace',textTransform:'uppercase',letterSpacing:'.06em',marginBottom:'4px'}}>Name</div>
-                <input className="fi" type="text" placeholder="Credit Card" value={name} onChange={(e) => setName(e.target.value)} required />
+                <input className="fi" type="text" placeholder="Credit Card" value={name} onChange={e => setName(e.target.value)} required />
               </div>
               <div>
                 <div style={{fontSize:'10px',color:'var(--t3)',fontFamily:'DM Mono,monospace',textTransform:'uppercase',letterSpacing:'.06em',marginBottom:'4px'}}>Balance</div>
-                <input className="fi" type="number" placeholder="0.00" value={balance} onChange={(e) => setBalance(e.target.value)} required />
+                <input className="fi" type="number" placeholder="0.00" value={balance} onChange={e => setBalance(e.target.value)} required />
               </div>
               <div>
                 <div style={{fontSize:'10px',color:'var(--t3)',fontFamily:'DM Mono,monospace',textTransform:'uppercase',letterSpacing:'.06em',marginBottom:'4px'}}>Min Payment</div>
-                <input className="fi" type="number" placeholder="0.00" value={minPayment} onChange={(e) => setMinPayment(e.target.value)} required />
+                <input className="fi" type="number" placeholder="0.00" value={minPayment} onChange={e => setMinPayment(e.target.value)} required />
               </div>
               <div>
                 <div style={{fontSize:'10px',color:'var(--t3)',fontFamily:'DM Mono,monospace',textTransform:'uppercase',letterSpacing:'.06em',marginBottom:'4px'}}>APR %</div>
-                <input className="fi" type="number" placeholder="0.00" value={apr} onChange={(e) => setApr(e.target.value)} required />
+                <input className="fi" type="number" placeholder="0.00" value={apr} onChange={e => setApr(e.target.value)} required />
               </div>
               <div>
                 <div style={{fontSize:'10px',color:'var(--t3)',fontFamily:'DM Mono,monospace',textTransform:'uppercase',letterSpacing:'.06em',marginBottom:'4px'}}>Due Date</div>
@@ -373,7 +396,7 @@ export default function DebtsPage() {
                         </td>
                         <td style={tdStyle(i)}>
                           <div style={{display:'flex',flexDirection:'column',gap:'2px'}}>
-                            <EditableCell value={d.due_date || ''} onChange={v => updateDebt(d.id, 'due_date', v)} color="var(--blue)" />
+                            <EditableCell value={d.due_date || ''} onChange={v => updateDebt(d.id, 'due_date', v)} color="var(--blue)" isDate={true} />
                             {dueInfo && (
                               <span style={{fontSize:'10px',fontFamily:'DM Mono,monospace',color: dueInfo.days < 0 ? 'var(--red)' : dueInfo.days <= 7 ? 'var(--amber)' : 'var(--t3)'}}>
                                 {dueInfo.days < 0 ? `${Math.abs(dueInfo.days)}d overdue` : dueInfo.days === 0 ? 'due today' : `${dueInfo.days}d left`}
@@ -382,14 +405,10 @@ export default function DebtsPage() {
                           </div>
                         </td>
                         <td style={tdStyle(i)}>
-                          {dueInfo ? (
-                            <span style={{fontFamily:'DM Mono,monospace',fontSize:'13px',color:'var(--amber)'}}>+${dueInfo.interest.toFixed(2)}</span>
-                          ) : <span style={{color:'var(--t3)'}}>—</span>}
+                          {dueInfo ? <span style={{fontFamily:'DM Mono,monospace',fontSize:'13px',color:'var(--amber)'}}>+${dueInfo.interest.toFixed(2)}</span> : <span style={{color:'var(--t3)'}}>—</span>}
                         </td>
                         <td style={tdStyle(i)}>
-                          {dueInfo ? (
-                            <span style={{fontFamily:'DM Mono,monospace',fontSize:'13px',color:'var(--red)',fontWeight:600}}>${dueInfo.totalDue.toFixed(2)}</span>
-                          ) : <span style={{color:'var(--t3)'}}>—</span>}
+                          {dueInfo ? <span style={{fontFamily:'DM Mono,monospace',fontSize:'13px',color:'var(--red)',fontWeight:600}}>${dueInfo.totalDue.toFixed(2)}</span> : <span style={{color:'var(--t3)'}}>—</span>}
                         </td>
                         <td style={tdStyle(i)}>
                           <div style={{display:'flex',alignItems:'center',gap:'7px'}}>
@@ -404,9 +423,15 @@ export default function DebtsPage() {
                             <button
                               onClick={() => makePayment(d)}
                               style={{fontSize:'11px',fontFamily:'DM Mono,monospace',padding:'6px 10px',borderRadius:'999px',cursor:'pointer',border:'1px solid var(--green)',background:'transparent',color:'var(--green)',whiteSpace:'nowrap',transition:'all .14s'}}
-                              title={dueInfo ? `Interest: $${dueInfo.interest.toFixed(2)} · Total due: $${dueInfo.totalDue.toFixed(2)}` : 'Make payment'}
                             >
                               ✓ Pay
+                            </button>
+                            <button
+                              onClick={() => { setPastPayment({debtId: d.id, name: d.name}); setPastAmount(String(d.min_payment)) }}
+                              style={{fontSize:'11px',fontFamily:'DM Mono,monospace',padding:'6px 10px',borderRadius:'999px',cursor:'pointer',border:'1px solid var(--blue)',background:'transparent',color:'var(--blue)',whiteSpace:'nowrap',transition:'all .14s'}}
+                              title="Log a past payment"
+                            >
+                              Past
                             </button>
                             {d.undo_balance != null && (
                               <button
@@ -448,10 +473,7 @@ export default function DebtsPage() {
                       <td style={{...tdStyle(i),fontFamily:'DM Mono,monospace',color:'var(--green)'}}>$0.00</td>
                       <td style={tdStyle(i)}>
                         <div style={{display:'flex',gap:'6px'}}>
-                          <button
-                            onClick={() => undoPayment(d)}
-                            style={{fontSize:'11px',fontFamily:'DM Mono,monospace',padding:'6px 10px',borderRadius:'999px',cursor:'pointer',border:'1px solid var(--amber)',background:'transparent',color:'var(--amber)',whiteSpace:'nowrap',transition:'all .14s'}}
-                          >
+                          <button onClick={() => undoPayment(d)} style={{fontSize:'11px',fontFamily:'DM Mono,monospace',padding:'6px 10px',borderRadius:'999px',cursor:'pointer',border:'1px solid var(--amber)',background:'transparent',color:'var(--amber)',whiteSpace:'nowrap',transition:'all .14s'}}>
                             Undo
                           </button>
                           <button onClick={() => deleteDebt(d.id)} className="btn-del">✕</button>

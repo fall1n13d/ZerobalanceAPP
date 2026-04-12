@@ -6,9 +6,10 @@ interface Props {
   placeholder?: string
   className?: string
   style?: React.CSSProperties
+  onBlur?: () => void
 }
 
-export default function DateInput({ value, onChange, placeholder = 'MM/DD/YYYY', className = 'fi', style }: Props) {
+export default function DateInput({ value, onChange, placeholder = 'MM/DD/YYYY', className = 'fi', style, onBlur }: Props) {
   function handleChange(e: React.ChangeEvent<HTMLInputElement>) {
     let v = e.target.value.replace(/\D/g, '')
     if (v.length > 8) v = v.slice(0, 8)
@@ -19,11 +20,13 @@ export default function DateInput({ value, onChange, placeholder = 'MM/DD/YYYY',
 
   return (
     <input
+      autoFocus
       className={className}
       type="text"
       placeholder={placeholder}
       value={value}
       onChange={handleChange}
+      onBlur={onBlur}
       maxLength={10}
       style={style}
     />
