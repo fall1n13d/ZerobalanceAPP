@@ -27,6 +27,8 @@ export default function Sidebar() {
     setTheme(saved)
     document.documentElement.setAttribute('data-theme', saved)
     loadMetrics()
+    window.addEventListener('debt-updated', loadMetrics)
+    return () => window.removeEventListener('debt-updated', loadMetrics)
   }, [pathname])
 
   function parseDueDate(dueDate: string): Date | null {
@@ -72,10 +74,8 @@ export default function Sidebar() {
 
     setMetrics({ totalDebt, minPayments, monthlyBills, monthlyExpenses, monthlyIncome, leftover })
 
-    // Split into upcoming and past due
     const today = new Date()
     today.setHours(0,0,0,0)
-
     const upcomingList: any[] = []
     const pastDueList: any[] = []
 
@@ -85,7 +85,6 @@ export default function Sidebar() {
       if (!due) return
       due.setHours(0,0,0,0)
       const diff = Math.ceil((due.getTime() - today.getTime()) / (1000 * 60 * 60 * 24))
-
       if (diff < 0) {
         pastDueList.push({ ...d, daysOverdue: Math.abs(diff) })
       } else if (diff <= 14) {
@@ -95,7 +94,6 @@ export default function Sidebar() {
 
     upcomingList.sort((a, b) => a.daysUntil - b.daysUntil)
     pastDueList.sort((a, b) => b.daysOverdue - a.daysOverdue)
-
     setUpcoming(upcomingList)
     setPastDue(pastDueList)
   }
@@ -130,7 +128,6 @@ export default function Sidebar() {
 
   return (
     <>
-      {/* Mobile header */}
       <div style={{display:'none',alignItems:'center',justifyContent:'space-between',padding:'14px 16px',background:'var(--surface)',borderBottom:'1px solid var(--b)',position:'sticky',top:0,zIndex:100}} className="mobile-header">
         <div style={{fontFamily:'Syne,sans-serif',fontWeight:800,fontSize:'16px',color:'var(--green)'}}>Zero Balance</div>
         <div style={{display:'flex',gap:'8px',alignItems:'center'}}>
@@ -143,7 +140,6 @@ export default function Sidebar() {
         </div>
       </div>
 
-      {/* Mobile nav */}
       {mobileOpen && (
         <div style={{display:'none',flexDirection:'column',background:'var(--surface)',borderBottom:'1px solid var(--b)',padding:'12px 16px',gap:'8px',position:'sticky',top:'49px',zIndex:99}} className="mobile-nav">
           {links.map((link) => (
@@ -155,7 +151,6 @@ export default function Sidebar() {
         </div>
       )}
 
-      {/* Desktop sidebar */}
       <aside className="sidebar">
         <div className="logo">
           <div className="logo-name">Zero Balance</div>
@@ -169,7 +164,6 @@ export default function Sidebar() {
           </button>
         </div>
 
-        {/* Metrics */}
         <div style={{padding:'14px 18px',borderBottom:'1px solid var(--b)'}}>
           {sm('Total Debt', `$${metrics.totalDebt.toFixed(2)}`, 'var(--red)')}
           {sm('Monthly Income', `$${metrics.monthlyIncome.toFixed(2)}`, 'var(--green)')}
@@ -184,7 +178,6 @@ export default function Sidebar() {
           </div>
         </div>
 
-        {/* Past Due Payments */}
         {pastDue.length > 0 && (
           <div style={{padding:'14px 18px',borderBottom:'1px solid var(--b)',background:'var(--rdim)'}}>
             <div style={{fontSize:'10px',color:'var(--red)',textTransform:'uppercase',letterSpacing:'.08em',fontFamily:'DM Mono,monospace',marginBottom:'10px',fontWeight:600}}>
@@ -204,7 +197,6 @@ export default function Sidebar() {
           </div>
         )}
 
-        {/* Upcoming Payments */}
         {upcoming.length > 0 && (
           <div style={{padding:'14px 18px',borderBottom:'1px solid var(--b)'}}>
             <div style={{fontSize:'10px',color:'var(--amber)',textTransform:'uppercase',letterSpacing:'.08em',fontFamily:'DM Mono,monospace',marginBottom:'10px',fontWeight:600}}>

@@ -152,6 +152,7 @@ export default function DebtsPage() {
       setDebts(data)
     }
     setLoading(false)
+    window.dispatchEvent(new Event('debt-updated'))
   }
 
   async function addDebt(e: any) {
@@ -180,8 +181,6 @@ export default function DebtsPage() {
     const currentBalance = Number(debt.balance)
     const minPmt = Number(debt.min_payment)
     const currentDueDate = debt.due_date || ''
-    // Simply subtract min payment — no interest added here
-    // Interest only accrues automatically when due date passes
     const newBalance = Math.max(0, Math.round((currentBalance - minPmt) * 100) / 100)
     const newDueDate = advanceDueDate(currentDueDate)
     const isPaidOff = newBalance === 0
@@ -263,7 +262,7 @@ export default function DebtsPage() {
             )}
           </div>
           <div style={{fontSize:'13px',color:'var(--t3)',marginTop:'8px'}}>
-            Click any value to edit · ✓ Pay subtracts min payment · Interest accrues automatically when overdue
+            Click any value to edit · ✓ Pay subtracts min payment and advances due date
           </div>
         </div>
 
