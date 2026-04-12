@@ -75,10 +75,7 @@ function parseDueDate(dueDate: string): Date | null {
 
 function todayStr(): string {
   const now = new Date()
-  const mm = String(now.getMonth() + 1).padStart(2, '0')
-  const dd = String(now.getDate()).padStart(2, '0')
-  const yyyy = now.getFullYear()
-  return `${mm}/${dd}/${yyyy}`
+  return `${String(now.getMonth()+1).padStart(2,'0')}/${String(now.getDate()).padStart(2,'0')}/${now.getFullYear()}`
 }
 
 function calcDueInfo(balance: number, apr: number, dueDate: string) {
@@ -99,17 +96,12 @@ async function accrueOverdueInterest(debts: any[], supabase: any) {
   const today = new Date()
   today.setHours(0,0,0,0)
   const todayString = todayStr()
-
   for (const debt of debts) {
     if (debt.paid || !debt.due_date) continue
-
-    // Skip if already accrued today
     if (debt.last_accrued === todayString) continue
-
     const due = parseDueDate(debt.due_date)
     if (!due) continue
     due.setHours(0,0,0,0)
-
     if (today > due) {
       const daysOverdue = Math.ceil((today.getTime() - due.getTime()) / (1000 * 60 * 60 * 24))
       const dailyRate = Number(debt.apr) / 100 / 365
@@ -140,10 +132,9 @@ export default function DebtsPage() {
   async function loadDebts() {
     const { data } = await supabase.from('debts').select('*').order('created_at', { ascending: true })
     if (!data) { setLoading(false); return }
-
     const overdue = data.filter(d => {
       if (d.paid || !d.due_date) return false
-      if (d.last_accrued === todayStr()) return false // already done today
+      if (d.last_accrued === todayStr()) return false
       const due = parseDueDate(d.due_date)
       if (!due) return false
       const today = new Date()
@@ -151,7 +142,6 @@ export default function DebtsPage() {
       due.setHours(0,0,0,0)
       return today > due
     })
-
     if (overdue.length > 0) {
       setAccruing(true)
       await accrueOverdueInterest(overdue, supabase)
@@ -188,12 +178,11 @@ export default function DebtsPage() {
 
   async function makePayment(debt: any) {
     const currentBalance = Number(debt.balance)
-    const apr = Number(debt.apr)
     const minPmt = Number(debt.min_payment)
     const currentDueDate = debt.due_date || ''
-    const dueInfo = calcDueInfo(currentBalance, apr, currentDueDate)
-    const balanceWithInterest = dueInfo ? dueInfo.totalDue : currentBalance
-    const newBalance = Math.max(0, Math.round((balanceWithInterest - minPmt) * 100) / 100)
+    // Simply subtract min payment — no interest added here
+    // Interest only accrues automatically when due date passes
+    const newBalance = Math.max(0, Math.round((currentBalance - minPmt) * 100) / 100)
     const newDueDate = advanceDueDate(currentDueDate)
     const isPaidOff = newBalance === 0
     const { error } = await supabase.from('debts').update({
@@ -202,7 +191,7 @@ export default function DebtsPage() {
       paid: isPaidOff,
       undo_balance: currentBalance,
       undo_due_date: currentDueDate,
-      last_accrued: null, // reset so interest can accrue on new due date
+      last_accrued: null,
     }).eq('id', debt.id)
     if (error) { alert('Payment failed: ' + error.message); return }
     loadDebts()
@@ -274,7 +263,7 @@ export default function DebtsPage() {
             )}
           </div>
           <div style={{fontSize:'13px',color:'var(--t3)',marginTop:'8px'}}>
-            Click any value to edit · ✓ Pay adds interest and advances due date · Interest accrues once per day when overdue
+            Click any value to edit · ✓ Pay subtracts min payment · Interest accrues automatically when overdue
           </div>
         </div>
 
@@ -336,7 +325,7 @@ export default function DebtsPage() {
               <table style={{width:'100%',borderCollapse:'collapse',minWidth:'900px'}}>
                 <thead>
                   <tr>
-                    {['Name','Balance','Min Payment','APR %','Due Date','Interest Due','Total Due','Progress',''].map(h => (
+                    {['Name','Balance','Min Payment','APR %','Due Date','Est. Interest','Total Due','Progress',''].map(h => (
                       <th key={h} style={thStyle}>{h}</th>
                     ))}
                   </tr>
@@ -392,6 +381,7 @@ export default function DebtsPage() {
                             <button
                               onClick={() => makePayment(d)}
                               style={{fontSize:'11px',fontFamily:'DM Mono,monospace',padding:'6px 10px',borderRadius:'999px',cursor:'pointer',border:'1px solid var(--green)',background:'transparent',color:'var(--green)',whiteSpace:'nowrap',transition:'all .14s'}}
+                              title={`Subtract $${Number(d.min_payment).toFixed(2)} from balance`}
                             >
                               ✓ Pay
                             </button>
