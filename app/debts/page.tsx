@@ -100,8 +100,8 @@ async function accrueOverdueInterest(debts: any[], supabase: any) {
       const dailyRate = Number(debt.apr) / 100 / 365
       const interest = Math.round(Number(debt.balance) * dailyRate * daysOverdue * 100) / 100
       const newBalance = Math.round((Number(debt.balance) + interest) * 100) / 100
-      const newDueDate = advanceDueDate(debt.due_date)
-      await supabase.from('debts').update({ balance: newBalance, due_date: newDueDate }).eq('id', debt.id)
+      // Keep the due date as overdue — don't advance it
+      await supabase.from('debts').update({ balance: newBalance }).eq('id', debt.id)
     }
   }
 }
@@ -191,27 +191,39 @@ export default function DebtsPage() {
     if (!pastPayment || !pastDate || !pastAmount) return
     const debt = debts.find(d => d.id === pastPayment.debtId)
     if (!debt) return
+
     const paymentAmount = parseFloat(pastAmount)
     const currentBalance = Number(debt.balance)
     const apr = Number(debt.apr)
-    const parts = pastDate.split('/')
-    if (parts.length !== 3) { alert('Invalid date format'); return }
-    const payDate = new Date(parseInt(parts[2]), parseInt(parts[0]) - 1, parseInt(parts[1]))
-    const dueParts = debt.due_date?.split('/')
+
+    // Calculate days between payment date and due date
+    const payDate = parseDueDate(pastDate)
+    const dueD = parseDueDate(debt.due_date)
+    if (!payDate) { alert('Invalid payment date'); return }
+
+    // Calculate interest from payment date to due date
     let daysUntilDue = 30
-    if (dueParts?.length === 3) {
-      const dueD = new Date(parseInt(dueParts[2]), parseInt(dueParts[0]) - 1, parseInt(dueParts[1]))
-      daysUntilDue = Math.max(0, Math.ceil((dueD.getTime() - payDate.getTime()) / (1000 * 60 * 60 * 24)))
+    if (dueD) {
+      daysUntilDue = Math.abs(Math.ceil((dueD.getTime() - payDate.getTime()) / (1000 * 60 * 60 * 24)))
     }
+
+    // Add interest to balance for the period
     const interest = Math.round(currentBalance * (apr / 100 / 365) * daysUntilDue * 100) / 100
     const balanceWithInterest = Math.round((currentBalance + interest) * 100) / 100
+
+    // Subtract payment
     const newBalance = Math.max(0, Math.round((balanceWithInterest - paymentAmount) * 100) / 100)
-    const newDueDate = advanceDueDate(debt.due_date)
     const isPaidOff = newBalance === 0
+
+    // Keep the SAME due date — don't advance it for past payments
+    // Only advance when they click regular Pay
     await supabase.from('debts').update({
-      balance: newBalance, due_date: newDueDate, paid: isPaidOff,
-      undo_balance: currentBalance, undo_due_date: debt.due_date,
+      balance: newBalance,
+      paid: isPaidOff,
+      undo_balance: currentBalance,
+      undo_due_date: debt.due_date,
     }).eq('id', debt.id)
+
     setPastPayment(null)
     setPastDate('')
     setPastAmount('')
@@ -272,12 +284,12 @@ export default function DebtsPage() {
       <Sidebar />
       <main className="main">
 
-        {/* Past Payment Modal */}
         {pastPayment && (
           <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.6)',display:'flex',alignItems:'center',justifyContent:'center',zIndex:500}}>
             <div style={{background:'var(--surface)',border:'1px solid var(--b2)',borderRadius:'24px',padding:'32px',width:'min(420px,90%)',boxShadow:'var(--shadow)'}}>
               <h2 style={{fontFamily:'Syne,sans-serif',fontWeight:700,fontSize:'20px',marginBottom:'6px'}}>Log Past Payment</h2>
-              <p style={{fontSize:'13px',color:'var(--t3)',marginBottom:'24px'}}>{pastPayment.name}</p>
+              <p style={{fontSize:'13px',color:'var(--t3)',marginBottom:'8px'}}>{pastPayment.name}</p>
+              <p style={{fontSize:'12px',color:'var(--amber)',fontFamily:'DM Mono,monospace',marginBottom:'24px'}}>Interest will be added to balance for the period · due date stays as overdue</p>
               <div style={{display:'flex',flexDirection:'column',gap:'14px'}}>
                 <div>
                   <div style={{fontSize:'10px',color:'var(--t3)',fontFamily:'DM Mono,monospace',textTransform:'uppercase',letterSpacing:'.06em',marginBottom:'4px'}}>Payment Date</div>
@@ -306,7 +318,7 @@ export default function DebtsPage() {
             )}
           </div>
           <div style={{fontSize:'13px',color:'var(--t3)',marginTop:'8px'}}>
-            Click any value to edit · ✓ Pay adds interest then subtracts min payment · Interest accrues automatically
+            Click any value to edit · ✓ Pay advances due date · Past logs payment without advancing date
           </div>
         </div>
 
@@ -377,26 +389,27 @@ export default function DebtsPage() {
                   {activeDebts.map((d, i) => {
                     const progress = getProgress(Number(d.balance), Number(d.orig_balance))
                     const dueInfo = calcDueInfo(Number(d.balance), Number(d.apr), d.due_date)
+                    const isOverdue = dueInfo && dueInfo.days < 0
                     return (
-                      <tr key={d.id}>
-                        <td style={tdStyle(i)}>
+                      <tr key={d.id} style={{background: isOverdue ? 'rgba(255,91,91,0.04)' : i % 2 === 0 ? 'var(--s2)' : 'transparent'}}>
+                        <td style={{...tdStyle(i), background:'transparent'}}>
                           <div style={{display:'flex',alignItems:'center',gap:'8px',flexWrap:'wrap'}}>
                             <EditableCell value={d.name} onChange={v => updateDebt(d.id, 'name', v)} />
                             {getDueBadge(d.due_date, d.paid)}
                           </div>
                         </td>
-                        <td style={tdStyle(i)}>
+                        <td style={{...tdStyle(i), background:'transparent'}}>
                           <EditableCell value={Number(d.balance).toFixed(2)} onChange={v => updateDebt(d.id, 'balance', v)} type="number" color="var(--red)" />
                         </td>
-                        <td style={tdStyle(i)}>
+                        <td style={{...tdStyle(i), background:'transparent'}}>
                           <EditableCell value={Number(d.min_payment).toFixed(2)} onChange={v => updateDebt(d.id, 'min_payment', v)} type="number" color="var(--amber)" />
                         </td>
-                        <td style={tdStyle(i)}>
+                        <td style={{...tdStyle(i), background:'transparent'}}>
                           <EditableCell value={String(d.apr)} onChange={v => updateDebt(d.id, 'apr', v)} type="number" color="var(--amber)" />
                         </td>
-                        <td style={tdStyle(i)}>
+                        <td style={{...tdStyle(i), background:'transparent'}}>
                           <div style={{display:'flex',flexDirection:'column',gap:'2px'}}>
-                            <EditableCell value={d.due_date || ''} onChange={v => updateDebt(d.id, 'due_date', v)} color="var(--blue)" isDate={true} />
+                            <EditableCell value={d.due_date || ''} onChange={v => updateDebt(d.id, 'due_date', v)} color={isOverdue ? 'var(--red)' : 'var(--blue)'} isDate={true} />
                             {dueInfo && (
                               <span style={{fontSize:'10px',fontFamily:'DM Mono,monospace',color: dueInfo.days < 0 ? 'var(--red)' : dueInfo.days <= 7 ? 'var(--amber)' : 'var(--t3)'}}>
                                 {dueInfo.days < 0 ? `${Math.abs(dueInfo.days)}d overdue` : dueInfo.days === 0 ? 'due today' : `${dueInfo.days}d left`}
@@ -404,13 +417,13 @@ export default function DebtsPage() {
                             )}
                           </div>
                         </td>
-                        <td style={tdStyle(i)}>
+                        <td style={{...tdStyle(i), background:'transparent'}}>
                           {dueInfo ? <span style={{fontFamily:'DM Mono,monospace',fontSize:'13px',color:'var(--amber)'}}>+${dueInfo.interest.toFixed(2)}</span> : <span style={{color:'var(--t3)'}}>—</span>}
                         </td>
-                        <td style={tdStyle(i)}>
+                        <td style={{...tdStyle(i), background:'transparent'}}>
                           {dueInfo ? <span style={{fontFamily:'DM Mono,monospace',fontSize:'13px',color:'var(--red)',fontWeight:600}}>${dueInfo.totalDue.toFixed(2)}</span> : <span style={{color:'var(--t3)'}}>—</span>}
                         </td>
-                        <td style={tdStyle(i)}>
+                        <td style={{...tdStyle(i), background:'transparent'}}>
                           <div style={{display:'flex',alignItems:'center',gap:'7px'}}>
                             <div style={{flex:1,height:'6px',background:'var(--s3)',borderRadius:'999px',overflow:'hidden',maxWidth:'70px'}}>
                               <div style={{height:'100%',borderRadius:'999px',background: progress > 66 ? 'var(--green)' : progress > 33 ? 'var(--amber)' : 'var(--red)',width:`${progress}%`,transition:'width .3s'}} />
@@ -418,7 +431,7 @@ export default function DebtsPage() {
                             <span style={{fontSize:'11px',fontFamily:'DM Mono,monospace',color:'var(--t2)',whiteSpace:'nowrap'}}>{progress}%</span>
                           </div>
                         </td>
-                        <td style={tdStyle(i)}>
+                        <td style={{...tdStyle(i), background:'transparent'}}>
                           <div style={{display:'flex',gap:'6px',alignItems:'center',flexWrap:'wrap'}}>
                             <button
                               onClick={() => makePayment(d)}
@@ -429,7 +442,7 @@ export default function DebtsPage() {
                             <button
                               onClick={() => { setPastPayment({debtId: d.id, name: d.name}); setPastAmount(String(d.min_payment)) }}
                               style={{fontSize:'11px',fontFamily:'DM Mono,monospace',padding:'6px 10px',borderRadius:'999px',cursor:'pointer',border:'1px solid var(--blue)',background:'transparent',color:'var(--blue)',whiteSpace:'nowrap',transition:'all .14s'}}
-                              title="Log a past payment"
+                              title="Log a missed past payment"
                             >
                               Past
                             </button>
