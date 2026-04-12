@@ -1,15 +1,14 @@
 'use client'
 
-import { useState } from 'react'
-
 interface Props {
   value: string
-  onChange: (val: string) => void
+  onChange: (v: string) => void
   placeholder?: string
   className?: string
+  style?: React.CSSProperties
 }
 
-export default function DateInput({ value, onChange, placeholder = 'MM/DD/YYYY', className = 'fi' }: Props) {
+export default function DateInput({ value, onChange, placeholder = 'MM/DD/YYYY', className = 'fi', style }: Props) {
   function handleChange(e: React.ChangeEvent<HTMLInputElement>) {
     let v = e.target.value.replace(/\D/g, '')
     if (v.length > 8) v = v.slice(0, 8)
@@ -26,6 +25,7 @@ export default function DateInput({ value, onChange, placeholder = 'MM/DD/YYYY',
       value={value}
       onChange={handleChange}
       maxLength={10}
+      style={style}
     />
   )
 }

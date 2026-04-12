@@ -4,17 +4,7 @@ import { useState, useEffect } from 'react'
 import { createClient } from '@/utils/supabase/client'
 import { useRouter } from 'next/navigation'
 import Sidebar from '@/components/Sidebar'
-
-function DateInput({ value, onChange }: { value: string, onChange: (v: string) => void }) {
-  function handleChange(e: React.ChangeEvent<HTMLInputElement>) {
-    let v = e.target.value.replace(/\D/g, '')
-    if (v.length > 8) v = v.slice(0, 8)
-    if (v.length >= 5) v = v.slice(0, 2) + '/' + v.slice(2, 4) + '/' + v.slice(4)
-    else if (v.length >= 3) v = v.slice(0, 2) + '/' + v.slice(2)
-    onChange(v)
-  }
-  return <input className="fi" type="text" placeholder="MM/DD/YYYY" value={value} onChange={handleChange} maxLength={10} />
-}
+import DateInput from '@/components/DateInput'
 
 const CAT_LABELS: Record<string, string> = {
   housing:'🏠 Housing', utilities:'💡 Utilities', food:'🛒 Food',
