@@ -103,16 +103,38 @@ export default function Dashboard() {
         return
       }
 
-      const confirmed = window.confirm(`Import backup from ${data.exported_at?.slice(0,10) || 'unknown date'}?\n\nThis will ADD the backup data to your existing data. It will not delete anything.`)
-      if (!confirmed) { setImporting(false); return }
-
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) { setImporting(false); return }
-
       const uid = user.id
+
+      const choice = window.confirm(
+        `Backup from: ${data.exported_at?.slice(0,10) || 'unknown date'}\n\n` +
+        `Contains:\n` +
+        `• ${data.debts?.length || 0} debts\n` +
+        `• ${data.bills?.length || 0} bills\n` +
+        `• ${data.paychecks?.length || 0} paychecks\n` +
+        `• ${data.expenses?.length || 0} expenses\n` +
+        `• ${data.records?.length || 0} records\n\n` +
+        `Click OK to REPLACE all current data with this backup.\n` +
+        `Click Cancel to ADD this backup to your existing data.`
+      )
 
       const strip = (items: any[]) => items.map(({ id, ...rest }: any) => ({ ...rest, user_id: uid }))
 
+      if (choice) {
+        // Replace — delete all first then insert
+        await Promise.all([
+          supabase.from('debts').delete().eq('user_id', uid),
+          supabase.from('bills').delete().eq('user_id', uid),
+          supabase.from('earners').delete().eq('user_id', uid),
+          supabase.from('paychecks').delete().eq('user_id', uid),
+          supabase.from('extra_income').delete().eq('user_id', uid),
+          supabase.from('expenses').delete().eq('user_id', uid),
+          supabase.from('records').delete().eq('user_id', uid),
+        ])
+      }
+
+      // Insert backup data
       if (data.debts?.length) await supabase.from('debts').insert(strip(data.debts))
       if (data.bills?.length) await supabase.from('bills').insert(strip(data.bills))
       if (data.earners?.length) await supabase.from('earners').insert(strip(data.earners))
@@ -121,7 +143,7 @@ export default function Dashboard() {
       if (data.expenses?.length) await supabase.from('expenses').insert(strip(data.expenses))
       if (data.records?.length) await supabase.from('records').insert(strip(data.records))
 
-      alert('Backup imported successfully!')
+      alert(`Backup ${choice ? 'restored' : 'merged'} successfully!`)
       loadData()
     } catch (err) {
       alert('Import failed — invalid backup file')
@@ -178,6 +200,9 @@ export default function Dashboard() {
               {importing ? '⏳ Importing...' : '⬆️ Import Backup'}
               <input type="file" accept=".json" onChange={importBackup} style={{display:'none'}} />
             </label>
+          </div>
+          <div style={{marginTop:'10px',fontSize:'11px',color:'var(--t3)',fontFamily:'DM Mono,monospace'}}>
+            Import: OK = Replace all data · Cancel = Add to existing
           </div>
         </div>
 
