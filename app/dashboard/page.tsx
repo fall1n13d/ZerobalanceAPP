@@ -103,46 +103,42 @@ export default function Dashboard() {
         return
       }
 
-      const { data: { user } } = await supabase.auth.getUser()
-      if (!user) { setImporting(false); return }
-      const uid = user.id
-
-      const choice = window.confirm(
-        `Backup from: ${data.exported_at?.slice(0,10) || 'unknown date'}\n\n` +
-        `Contains:\n` +
+      const confirmed = window.confirm(
+        `Restore backup from ${data.exported_at?.slice(0,10) || 'unknown date'}?\n\n` +
+        `This will REPLACE all your current data with this backup.\n\n` +
         `• ${data.debts?.length || 0} debts\n` +
         `• ${data.bills?.length || 0} bills\n` +
         `• ${data.earners?.length || 0} earners\n` +
         `• ${data.paychecks?.length || 0} paychecks\n` +
         `• ${data.expenses?.length || 0} expenses\n` +
-        `• ${data.records?.length || 0} records\n\n` +
-        `Click OK to REPLACE all current data.\n` +
-        `Click Cancel to ADD to existing data.`
+        `• ${data.records?.length || 0} records`
       )
 
-      if (choice) {
-        // Replace — delete all first
-        await Promise.all([
-          supabase.from('paychecks').delete().eq('user_id', uid),
-          supabase.from('earners').delete().eq('user_id', uid),
-          supabase.from('debts').delete().eq('user_id', uid),
-          supabase.from('bills').delete().eq('user_id', uid),
-          supabase.from('extra_income').delete().eq('user_id', uid),
-          supabase.from('expenses').delete().eq('user_id', uid),
-          supabase.from('records').delete().eq('user_id', uid),
-        ])
-      }
+      if (!confirmed) { setImporting(false); e.target.value = ''; return }
+
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) { setImporting(false); return }
+      const uid = user.id
+
+      // Delete all existing data first
+      await supabase.from('paychecks').delete().eq('user_id', uid)
+      await supabase.from('earners').delete().eq('user_id', uid)
+      await supabase.from('debts').delete().eq('user_id', uid)
+      await supabase.from('bills').delete().eq('user_id', uid)
+      await supabase.from('extra_income').delete().eq('user_id', uid)
+      await supabase.from('expenses').delete().eq('user_id', uid)
+      await supabase.from('records').delete().eq('user_id', uid)
 
       const strip = (items: any[]) => items.map(({ id, ...rest }: any) => ({ ...rest, user_id: uid }))
 
-      // Insert debts, bills, extra income, expenses, records directly
+      // Insert everything except earners and paychecks first
       if (data.debts?.length) await supabase.from('debts').insert(strip(data.debts))
       if (data.bills?.length) await supabase.from('bills').insert(strip(data.bills))
       if (data.extra_income?.length) await supabase.from('extra_income').insert(strip(data.extra_income))
       if (data.expenses?.length) await supabase.from('expenses').insert(strip(data.expenses))
       if (data.records?.length) await supabase.from('records').insert(strip(data.records))
 
-      // Insert earners and map old IDs to new IDs for paychecks
+      // Insert earners and remap IDs for paychecks
       if (data.earners?.length) {
         const earnerIdMap: Record<number, number> = {}
         for (const earner of data.earners) {
@@ -152,26 +148,22 @@ export default function Dashboard() {
             .insert({ user_id: uid, name: earner.name, freq: earner.freq })
             .select()
             .single()
-          if (inserted) {
-            earnerIdMap[oldId] = inserted.id
-          }
+          if (inserted) earnerIdMap[oldId] = inserted.id
         }
-
-        // Insert paychecks with remapped earner IDs
         if (data.paychecks?.length) {
-          const paychecksToInsert = data.paychecks.map(({ id, ...p }: any) => ({
+          const mapped = data.paychecks.map(({ id, ...p }: any) => ({
             user_id: uid,
-            earner_id: earnerIdMap[p.earner_id] || p.earner_id,
+            earner_id: earnerIdMap[p.earner_id] || null,
             amount: p.amount,
             date: p.date,
           }))
-          await supabase.from('paychecks').insert(paychecksToInsert)
+          await supabase.from('paychecks').insert(mapped)
         }
       } else if (data.paychecks?.length) {
         await supabase.from('paychecks').insert(strip(data.paychecks))
       }
 
-      alert(`Backup ${choice ? 'restored' : 'merged'} successfully!`)
+      alert('Backup restored successfully!')
       loadData()
     } catch (err) {
       alert('Import failed — invalid backup file')
@@ -231,7 +223,7 @@ export default function Dashboard() {
             </label>
           </div>
           <div style={{marginTop:'10px',fontSize:'11px',color:'var(--t3)',fontFamily:'DM Mono,monospace'}}>
-            Import: OK = Replace all data · Cancel = Add to existing
+            Import replaces all current data with the backup
           </div>
         </div>
 
