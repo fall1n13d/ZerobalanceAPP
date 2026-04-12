@@ -73,6 +73,14 @@ function parseDueDate(dueDate: string): Date | null {
   return isNaN(d.getTime()) ? null : d
 }
 
+function todayStr(): string {
+  const now = new Date()
+  const mm = String(now.getMonth() + 1).padStart(2, '0')
+  const dd = String(now.getDate()).padStart(2, '0')
+  const yyyy = now.getFullYear()
+  return `${mm}/${dd}/${yyyy}`
+}
+
 function calcDueInfo(balance: number, apr: number, dueDate: string) {
   if (!dueDate) return null
   const due = parseDueDate(dueDate)
@@ -90,17 +98,27 @@ function calcDueInfo(balance: number, apr: number, dueDate: string) {
 async function accrueOverdueInterest(debts: any[], supabase: any) {
   const today = new Date()
   today.setHours(0,0,0,0)
+  const todayString = todayStr()
+
   for (const debt of debts) {
     if (debt.paid || !debt.due_date) continue
+
+    // Skip if already accrued today
+    if (debt.last_accrued === todayString) continue
+
     const due = parseDueDate(debt.due_date)
     if (!due) continue
     due.setHours(0,0,0,0)
+
     if (today > due) {
       const daysOverdue = Math.ceil((today.getTime() - due.getTime()) / (1000 * 60 * 60 * 24))
       const dailyRate = Number(debt.apr) / 100 / 365
       const interest = Math.round(Number(debt.balance) * dailyRate * daysOverdue * 100) / 100
       const newBalance = Math.round((Number(debt.balance) + interest) * 100) / 100
-      await supabase.from('debts').update({ balance: newBalance }).eq('id', debt.id)
+      await supabase.from('debts').update({
+        balance: newBalance,
+        last_accrued: todayString,
+      }).eq('id', debt.id)
     }
   }
 }
@@ -122,8 +140,10 @@ export default function DebtsPage() {
   async function loadDebts() {
     const { data } = await supabase.from('debts').select('*').order('created_at', { ascending: true })
     if (!data) { setLoading(false); return }
+
     const overdue = data.filter(d => {
       if (d.paid || !d.due_date) return false
+      if (d.last_accrued === todayStr()) return false // already done today
       const due = parseDueDate(d.due_date)
       if (!due) return false
       const today = new Date()
@@ -131,6 +151,7 @@ export default function DebtsPage() {
       due.setHours(0,0,0,0)
       return today > due
     })
+
     if (overdue.length > 0) {
       setAccruing(true)
       await accrueOverdueInterest(overdue, supabase)
@@ -176,8 +197,12 @@ export default function DebtsPage() {
     const newDueDate = advanceDueDate(currentDueDate)
     const isPaidOff = newBalance === 0
     const { error } = await supabase.from('debts').update({
-      balance: newBalance, due_date: newDueDate, paid: isPaidOff,
-      undo_balance: currentBalance, undo_due_date: currentDueDate,
+      balance: newBalance,
+      due_date: newDueDate,
+      paid: isPaidOff,
+      undo_balance: currentBalance,
+      undo_due_date: currentDueDate,
+      last_accrued: null, // reset so interest can accrue on new due date
     }).eq('id', debt.id)
     if (error) { alert('Payment failed: ' + error.message); return }
     loadDebts()
@@ -188,7 +213,10 @@ export default function DebtsPage() {
     const { error } = await supabase.from('debts').update({
       balance: Number(debt.undo_balance),
       due_date: debt.undo_due_date || debt.due_date,
-      paid: false, undo_balance: null, undo_due_date: null,
+      paid: false,
+      undo_balance: null,
+      undo_due_date: null,
+      last_accrued: null,
     }).eq('id', debt.id)
     if (error) { alert('Undo failed: ' + error.message); return }
     loadDebts()
@@ -246,7 +274,7 @@ export default function DebtsPage() {
             )}
           </div>
           <div style={{fontSize:'13px',color:'var(--t3)',marginTop:'8px'}}>
-            Click any value to edit · ✓ Pay adds interest and advances due date · Change due date to past to mark overdue
+            Click any value to edit · ✓ Pay adds interest and advances due date · Interest accrues once per day when overdue
           </div>
         </div>
 
