@@ -45,7 +45,7 @@ function EditableCell({ value, onChange, type = 'text', color }: { value: string
       title="Click to edit"
       style={{cursor:'text',color: color || 'var(--text)',fontFamily:'DM Mono,monospace',fontSize:'13px',borderBottom:'1px dashed var(--b2)',paddingBottom:'1px'}}
     >
-      {value}
+      {value || '—'}
     </span>
   )
 }
@@ -55,18 +55,24 @@ function advanceDueDate(dueDate: string): string {
   const parts = dueDate.split('/')
   if (parts.length !== 3) return dueDate
   let month = parseInt(parts[0])
-  let day = parseInt(parts[1])
+  const day = parseInt(parts[1])
   let year = parseInt(parts[2])
   month += 1
   if (month > 12) { month = 1; year += 1 }
   return `${String(month).padStart(2,'0')}/${String(day).padStart(2,'0')}/${year}`
 }
 
-function calcDueInfo(balance: number, apr: number, dueDate: string) {
+function parseDueDate(dueDate: string): Date | null {
   if (!dueDate) return null
   const parts = dueDate.split('/')
   if (parts.length !== 3) return null
-  const due = new Date(parseInt(parts[2]), parseInt(parts[0]) - 1, parseInt(parts[1]))
+  return new Date(parseInt(parts[2]), parseInt(parts[0]) - 1, parseInt(parts[1]))
+}
+
+function calcDueInfo(balance: number, apr: number, dueDate: string) {
+  if (!dueDate) return null
+  const due = parseDueDate(dueDate)
+  if (!due) return null
   const today = new Date()
   today.setHours(0,0,0,0)
   due.setHours(0,0,0,0)
@@ -75,6 +81,33 @@ function calcDueInfo(balance: number, apr: number, dueDate: string) {
   const interest = Math.round(balance * (apr / 100 / 365) * daysUsed * 100) / 100
   const totalDue = Math.round((balance + interest) * 100) / 100
   return { days, interest, totalDue }
+}
+
+// Accrue interest if due date has passed — runs on page load
+async function accrueOverdueInterest(debts: any[], supabase: any) {
+  const today = new Date()
+  today.setHours(0,0,0,0)
+
+  for (const debt of debts) {
+    if (debt.paid || !debt.due_date) continue
+    const due = parseDueDate(debt.due_date)
+    if (!due) continue
+    due.setHours(0,0,0,0)
+
+    // If due date has passed, accrue interest and advance due date
+    if (today > due) {
+      const daysOverdue = Math.ceil((today.getTime() - due.getTime()) / (1000 * 60 * 60 * 24))
+      const dailyRate = Number(debt.apr) / 100 / 365
+      const interest = Math.round(Number(debt.balance) * dailyRate * daysOverdue * 100) / 100
+      const newBalance = Math.round((Number(debt.balance) + interest) * 100) / 100
+      const newDueDate = advanceDueDate(debt.due_date)
+
+      await supabase.from('debts').update({
+        balance: newBalance,
+        due_date: newDueDate,
+      }).eq('id', debt.id)
+    }
+  }
 }
 
 export default function DebtsPage() {
@@ -87,12 +120,36 @@ export default function DebtsPage() {
   const [apr, setApr] = useState('')
   const [dueDate, setDueDate] = useState('')
   const [loading, setLoading] = useState(true)
+  const [accruing, setAccruing] = useState(false)
 
   useEffect(() => { loadDebts() }, [])
 
   async function loadDebts() {
     const { data } = await supabase.from('debts').select('*').order('created_at', { ascending: true })
-    setDebts(data || [])
+    if (!data) { setLoading(false); return }
+
+    // Check if any debts have overdue dates and accrue interest
+    const overdue = data.filter(d => {
+      if (d.paid || !d.due_date) return false
+      const due = parseDueDate(d.due_date)
+      if (!due) return false
+      const today = new Date()
+      today.setHours(0,0,0,0)
+      due.setHours(0,0,0,0)
+      return today > due
+    })
+
+    if (overdue.length > 0) {
+      setAccruing(true)
+      await accrueOverdueInterest(overdue, supabase)
+      setAccruing(false)
+      // Reload after accruing
+      const { data: refreshed } = await supabase.from('debts').select('*').order('created_at', { ascending: true })
+      setDebts(refreshed || [])
+    } else {
+      setDebts(data)
+    }
+
     setLoading(false)
   }
 
@@ -124,33 +181,41 @@ export default function DebtsPage() {
   }
 
   async function makePayment(debt: any) {
-    const balance = Number(debt.balance)
+    const currentBalance = Number(debt.balance)
     const apr = Number(debt.apr)
     const minPmt = Number(debt.min_payment)
+    const currentDueDate = debt.due_date || ''
 
-    const dueInfo = calcDueInfo(balance, apr, debt.due_date)
-    const balanceWithInterest = dueInfo ? dueInfo.totalDue : balance
+    const dueInfo = calcDueInfo(currentBalance, apr, currentDueDate)
+    const balanceWithInterest = dueInfo ? dueInfo.totalDue : currentBalance
     const newBalance = Math.max(0, Math.round((balanceWithInterest - minPmt) * 100) / 100)
-    const newDueDate = advanceDueDate(debt.due_date)
+    const newDueDate = advanceDueDate(currentDueDate)
     const isPaidOff = newBalance === 0
 
-    await supabase.from('debts').update({
+    const { error } = await supabase.from('debts').update({
       balance: newBalance,
       due_date: newDueDate,
       paid: isPaidOff,
-      undo_balance: balance,
-      undo_due_date: debt.due_date,
+      undo_balance: currentBalance,
+      undo_due_date: currentDueDate,
     }).eq('id', debt.id)
 
+    if (error) { alert('Payment failed: ' + error.message); return }
     loadDebts()
   }
 
   async function undoPayment(debt: any) {
-    await supabase.from('debts').update({
-      balance: debt.undo_balance,
+    if (debt.undo_balance == null) { alert('No previous payment to undo.'); return }
+
+    const { error } = await supabase.from('debts').update({
+      balance: Number(debt.undo_balance),
       due_date: debt.undo_due_date || debt.due_date,
       paid: false,
+      undo_balance: null,
+      undo_due_date: null,
     }).eq('id', debt.id)
+
+    if (error) { alert('Undo failed: ' + error.message); return }
     loadDebts()
   }
 
@@ -162,9 +227,8 @@ export default function DebtsPage() {
   function getDueBadge(dueDate: string, paid: boolean) {
     if (paid) return <span style={{fontSize:'10px',fontFamily:'DM Mono,monospace',padding:'2px 7px',borderRadius:'20px',background:'var(--gdim)',color:'var(--green)',border:'1px solid var(--green)'}}>PAID OFF</span>
     if (!dueDate) return null
-    const parts = dueDate.split('/')
-    if (parts.length !== 3) return null
-    const due = new Date(parseInt(parts[2]), parseInt(parts[0]) - 1, parseInt(parts[1]))
+    const due = parseDueDate(dueDate)
+    if (!due) return null
     const today = new Date()
     const diff = Math.ceil((due.getTime() - today.getTime()) / (1000 * 60 * 60 * 24))
     if (diff < 0) return <span style={{fontSize:'10px',fontFamily:'DM Mono,monospace',padding:'2px 7px',borderRadius:'20px',background:'var(--rdim)',color:'var(--red)',border:'1px solid var(--red)'}}>OVERDUE</span>
@@ -208,9 +272,16 @@ export default function DebtsPage() {
       <Sidebar />
       <main className="main">
         <div className="page-header">
-          <div className="page-title">My Debts</div>
+          <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+            <div className="page-title">My Debts</div>
+            {accruing && (
+              <span style={{fontSize:'11px',fontFamily:'DM Mono,monospace',color:'var(--amber)',background:'var(--adim)',border:'1px solid var(--amber)',borderRadius:'999px',padding:'4px 12px'}}>
+                ⏳ Accruing interest...
+              </span>
+            )}
+          </div>
           <div style={{fontSize:'13px',color:'var(--t3)',marginTop:'8px'}}>
-            Click any value to edit · ✓ Pay uses daily interest calculation to update balance
+            Click any value to edit · Interest accrues automatically when due date passes
           </div>
         </div>
 
@@ -271,7 +342,7 @@ export default function DebtsPage() {
             <div className="card-body"><p style={{color:'var(--t3)'}}>No active debts.</p></div>
           ) : (
             <div style={{overflowX:'auto'}}>
-              <table style={{width:'100%',borderCollapse:'collapse',minWidth:'800px'}}>
+              <table style={{width:'100%',borderCollapse:'collapse',minWidth:'900px'}}>
                 <thead>
                   <tr>
                     {['Name','Balance','Min Payment','APR %','Due Date','Interest Due','Total Due','Progress',''].map(h => (
@@ -312,16 +383,12 @@ export default function DebtsPage() {
                         </td>
                         <td style={tdStyle(i)}>
                           {dueInfo ? (
-                            <span style={{fontFamily:'DM Mono,monospace',fontSize:'13px',color:'var(--amber)'}}>
-                              +${dueInfo.interest.toFixed(2)}
-                            </span>
+                            <span style={{fontFamily:'DM Mono,monospace',fontSize:'13px',color:'var(--amber)'}}>+${dueInfo.interest.toFixed(2)}</span>
                           ) : <span style={{color:'var(--t3)'}}>—</span>}
                         </td>
                         <td style={tdStyle(i)}>
                           {dueInfo ? (
-                            <span style={{fontFamily:'DM Mono,monospace',fontSize:'13px',color:'var(--red)',fontWeight:600}}>
-                              ${dueInfo.totalDue.toFixed(2)}
-                            </span>
+                            <span style={{fontFamily:'DM Mono,monospace',fontSize:'13px',color:'var(--red)',fontWeight:600}}>${dueInfo.totalDue.toFixed(2)}</span>
                           ) : <span style={{color:'var(--t3)'}}>—</span>}
                         </td>
                         <td style={tdStyle(i)}>
@@ -337,14 +404,14 @@ export default function DebtsPage() {
                             <button
                               onClick={() => makePayment(d)}
                               style={{fontSize:'11px',fontFamily:'DM Mono,monospace',padding:'6px 10px',borderRadius:'999px',cursor:'pointer',border:'1px solid var(--green)',background:'transparent',color:'var(--green)',whiteSpace:'nowrap',transition:'all .14s'}}
-                              title={dueInfo ? `Pay $${Number(d.min_payment).toFixed(2)} · Total due: $${dueInfo.totalDue.toFixed(2)}` : 'Make payment'}
+                              title={dueInfo ? `Interest: $${dueInfo.interest.toFixed(2)} · Total due: $${dueInfo.totalDue.toFixed(2)}` : 'Make payment'}
                             >
                               ✓ Pay
                             </button>
                             {d.undo_balance != null && (
                               <button
                                 onClick={() => undoPayment(d)}
-                                style={{fontSize:'11px',fontFamily:'DM Mono,monospace',padding:'6px 10px',borderRadius:'999px',cursor:'pointer',border:'1px solid var(--b2)',background:'transparent',color:'var(--t3)',whiteSpace:'nowrap',transition:'all .14s'}}
+                                style={{fontSize:'11px',fontFamily:'DM Mono,monospace',padding:'6px 10px',borderRadius:'999px',cursor:'pointer',border:'1px solid var(--amber)',background:'transparent',color:'var(--amber)',whiteSpace:'nowrap',transition:'all .14s'}}
                               >
                                 Undo
                               </button>
@@ -383,7 +450,7 @@ export default function DebtsPage() {
                         <div style={{display:'flex',gap:'6px'}}>
                           <button
                             onClick={() => undoPayment(d)}
-                            style={{fontSize:'11px',fontFamily:'DM Mono,monospace',padding:'6px 10px',borderRadius:'999px',cursor:'pointer',border:'1px solid var(--b2)',background:'transparent',color:'var(--t3)',whiteSpace:'nowrap',transition:'all .14s'}}
+                            style={{fontSize:'11px',fontFamily:'DM Mono,monospace',padding:'6px 10px',borderRadius:'999px',cursor:'pointer',border:'1px solid var(--amber)',background:'transparent',color:'var(--amber)',whiteSpace:'nowrap',transition:'all .14s'}}
                           >
                             Undo
                           </button>
